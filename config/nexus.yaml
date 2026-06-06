@@ -1,0 +1,67 @@
+# =============================================================================
+# Nexus Configuration
+# =============================================================================
+
+# --- Provider Settings ---
+# Supported providers: groq, openai, anthropic, ollama
+provider: "groq"
+
+# Model name for the selected provider
+#   groq:     "llama-3.3-70b-versatile", "mixtral-8x7b-32768", etc.
+#   openai:   "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", etc.
+#   anthropic: "claude-sonnet-4-20250514", "claude-haiku-3-5", etc.
+#   ollama:   "llama3.2", "mistral", "codellama", etc.
+groq_model: "llama-3.3-70b-versatile"
+
+# Custom base URL (for OpenAI-compatible APIs or Ollama)
+#   OpenAI-compatible: "https://api.openai.com/v1"
+#   Ollama: "http://localhost:11434"
+base_url: ""
+
+# API key will be read from environment variable GROQ_API_KEY (or OPENAI_API_KEY,
+# ANTHROPIC_API_KEY depending on provider). You can also put it in ~/.nexus/.env
+
+# --- Generation Settings ---
+timeout: 30
+max_tokens: 4096
+temperature: 0.7
+
+# --- Content Loading ---
+max_content_length: 50000
+summarize_threshold: 40000
+
+# --- Cache ---
+cache_ttl: 3600
+max_cache_size_mb: 50      # Auto-clean cache when it exceeds this size (MB)
+max_retries: 3
+rate_limit: 5
+
+# --- Conversation History ---
+# Number of previous exchanges to remember for context (default: 5)
+conversation_history_size: 5
+
+# --- System Prompt ---
+system_prompt: "Ты — полезный ассистент. Отвечай кратко и по делу."
+
+# --- Web Search ---
+# Allows Nexus to look up fresh information from the internet before answering.
+# Enable per-call with `nexus run "..." --search` or globally by setting
+# `enabled: true` (then use `--no-search` to opt out for a specific call).
+#
+# Backends (chosen automatically when backend is "auto"):
+#   - tavily:    recommended, free tier: https://tavily.com
+#   - bing:      Azure Bing Web Search (1000 req/month free)
+#   - searxng:   public or self-hosted SearXNG instance
+#   - duckduckgo: no key required, default fallback
+web_search:
+  enabled: false
+  backend: "auto"            # auto | duckduckgo | tavily | searxng | bing
+  max_results: 5
+  fetch_top_n: 3
+  timeout: 15
+  cache_enabled: true
+  cache_ttl: 3600
+  # Optional: provide API keys here (otherwise they are read from .env)
+  # tavily_api_key: "tvly-..."
+  # bing_api_key: "..."
+  # searxng_url: "https://searx.be"

@@ -1,0 +1,25 @@
+groq
+requests
+beautifulsoup4
+python-dotenv
+pyyaml
+rich
+youtube-transcript-api
+pypdf
+python-docx
+python-pptx
+openpyxl
+# Optional providers (uncomment as needed):
+# openai
+# anthropic
+# ollama
+# Web-search is built-in (DuckDuckGo fallback works without any extra deps).
+# To enable a paid search backend, uncomment the matching SDK:
+# tavily-python
+# bing (uses REST; no SDK required)
+# searxng (uses REST; no SDK required)
+
+# MCP server (optional — only needed for `nexus mcp` / IDE integration)
+# mcp
+
+

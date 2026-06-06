@@ -1,0 +1,89 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus"
+version = "1.0.0"
+description = "Nexus — ИИ-ассистент с загрузкой контента из URL и web-поиском"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Nexus Team"}
+]
+keywords = ["ai", "llm", "assistant", "cli", "web-search"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "groq",
+    "requests",
+    "beautifulsoup4",
+    "python-dotenv",
+    "pyyaml",
+    "rich",
+    "youtube-transcript-api",
+    "pypdf",
+    "python-docx",
+    "python-pptx",
+    "openpyxl",
+]
+
+[project.optional-dependencies]
+openai = ["openai"]
+anthropic = ["anthropic"]
+ollama = ["ollama"]
+mcp = ["mcp"]
+interactive = ["prompt_toolkit"]
+all = [
+    "openai",
+    "anthropic",
+    "ollama",
+    "mcp",
+    "prompt_toolkit",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "flake8",
+    "black",
+    "isort",
+    "mypy",
+    "pre-commit",
+]
+
+[project.scripts]
+nexus = "nexus.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/your-username/nexus"
+Documentation = "https://github.com/your-username/nexus/tree/main/docs"
+Repository = "https://github.com/your-username/nexus"
+Issues = "https://github.com/your-username/nexus/issues"
+
+[tool.setuptools.packages.find]
+include = ["nexus*"]
+
+[tool.black]
+line-length = 100
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
