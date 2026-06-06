@@ -8,6 +8,12 @@ import os
 import shutil
 import sys
 
+# --- Python version gate (before any heavy imports) ---
+if sys.version_info < (3, 9):
+    print("Nexus requires Python 3.9 or higher.")
+    print(f"  You are running Python {sys.version}")
+    sys.exit(1)
+
 from rich.console import Console
 from rich.live import Live
 from rich.markdown import Markdown
@@ -24,6 +30,7 @@ from nexus.commands.run import (
 )
 from nexus.core.agent import NexusAgent
 from nexus.core.config import ConfigError, load_config
+from nexus.core.logo import print_logo
 from nexus.core.history import clear as clear_conversation
 from nexus.core.i18n import current_language, set_language, supported_languages, t
 from nexus.core.paths import (
@@ -322,6 +329,113 @@ def cmd_cache_clear(args) -> None:
     console.print(f"[green]{t('cmd.cache_clear_done')}[/green]")
 
 
+def cmd_version(args) -> None:
+    """Print the Nexus version and exit."""
+    from nexus import __version__
+
+    console.print(f"[bold]Nexus[/bold] v{__version__}")
+    console.print(f"Python {sys.version.split()[0]}")
+    console.print(f"Platform: {sys.platform}")
+
+
+def cmd_doctor(args) -> None:
+    """Run diagnostics: Python, API keys, providers, FTS5, config."""
+    from nexus import __version__
+    from nexus.core.config import load_config
+
+    checks = []
+
+    def _ok(label: str, detail: str = "") -> None:
+        msg = f"  ✅ {label}"
+        if detail:
+            msg += f" — {detail}"
+        console.print(f"[green]{msg}[/green]")
+        checks.append(True)
+
+    def _warn(label: str, detail: str = "") -> None:
+        msg = f"  ⚠️  {label}"
+        if detail:
+            msg += f" — {detail}"
+        console.print(f"[yellow]{msg}[/yellow]")
+        checks.append(True)
+
+    def _fail(label: str, detail: str = "") -> None:
+        msg = f"  ❌ {label}"
+        if detail:
+            msg += f" — {detail}"
+        console.print(f"[red]{msg}[/red]")
+        checks.append(False)
+
+    console.print(f"\n[bold]Nexus Doctor — v{__version__}[/bold]\n")
+
+    # --- Python ---
+    console.print("[bold cyan]Python[/bold cyan]")
+    _ok(f"Python {sys.version.split()[0]}", sys.executable)
+
+    # --- Config ---
+    console.print("\n[bold cyan]Configuration[/bold cyan]")
+    try:
+        config = load_config()
+        _ok("Config loaded", config.to_dict().get("provider", "groq"))
+    except Exception as e:
+        _fail("Config error", str(e))
+        config = None
+
+    # --- API keys ---
+    console.print("\n[bold cyan]API Keys[/bold cyan]")
+    if config:
+        for prov in ("groq", "openai", "anthropic", "ollama"):
+            env_var = {"groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY",
+                       "anthropic": "ANTHROPIC_API_KEY"}.get(prov)
+            if prov == "ollama":
+                _ok("ollama", "no key needed")
+            elif env_var and os.getenv(env_var):
+                _ok(f"{prov}", f"{env_var} is set")
+            else:
+                _warn(f"{prov}", f"{env_var} not set")
+    else:
+        _warn("Skipped (no config)")
+
+    # --- Providers ---
+    console.print("\n[bold cyan]Providers[/bold cyan]")
+    for prov_name, sdk_name in [("groq", "groq"), ("openai", "openai"),
+                                  ("anthropic", "anthropic"), ("ollama", "ollama")]:
+        try:
+            __import__(sdk_name)
+            _ok(prov_name, f"SDK installed ({sdk_name})")
+        except ImportError:
+            _warn(prov_name, f"SDK not installed (pip install {sdk_name})")
+
+    # --- Web search ---
+    console.print("\n[bold cyan]Web Search[/bold cyan]")
+    for sdk_name in ("tavily", "requests"):
+        try:
+            __import__(sdk_name)
+            _ok(sdk_name, "installed")
+        except ImportError:
+            _warn(sdk_name, "not installed")
+
+    # --- SQLite FTS5 ---
+    console.print("\n[bold cyan]SQLite FTS5[/bold cyan]")
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
+        conn.execute("DROP TABLE _probe")
+        conn.close()
+        _ok("FTS5 available")
+    except Exception:
+        _warn("FTS5 not available", "LIKE fallback will be used")
+
+    # --- Summary ---
+    passed = sum(checks)
+    total = len(checks)
+    console.print(f"\n[bold]Result: {passed}/{total} checks passed[/bold]\n")
+
+    if passed < total:
+        sys.exit(1)
+
+
 def cmd_mcp(args) -> None:
     """Start the Nexus MCP stdio server (blocks until the client disconnects)."""
     # Imported lazily so the rest of the CLI works even if `mcp` is missing.
@@ -449,8 +563,16 @@ def cmd_web_search(args) -> None:
         )
 
 
+class _LogoHelpParser(argparse.ArgumentParser):
+    """ArgumentParser subclass that prints the Nexus logo before help text."""
+
+    def print_help(self, file=None):
+        print_logo(console)
+        super().print_help(file)
+
+
 def build_parser():
-    parser = argparse.ArgumentParser(
+    parser = _LogoHelpParser(
         prog="nexus",
         description=t("cli.title"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -527,6 +649,8 @@ def build_parser():
     subparsers.add_parser("history", help=t("cmd.history_help"))
     subparsers.add_parser("cache-clear", help=t("cmd.cache_clear_help"))
     subparsers.add_parser("status", help=t("cmd.status_help"))
+    subparsers.add_parser("version", help="Show Nexus version")
+    subparsers.add_parser("doctor", help="Run diagnostics")
 
     # `nexus mcp` — run the MCP stdio server so MCP-aware clients (Claude
     # Desktop, Cursor, etc.) can use Nexus as a tool.  See nexus/mcp_server.py.
@@ -545,6 +669,8 @@ COMMAND_MAP = {
     "history": cmd_history,
     "cache-clear": cmd_cache_clear,
     "status": cmd_status,
+    "version": cmd_version,
+    "doctor": cmd_doctor,
     "mcp": cmd_mcp,
 }
 
@@ -578,6 +704,15 @@ def main() -> None:
 
     # ``--lang`` was already honoured above; nothing else to do here.
     # The flag stays in the parser so it shows up in ``--help``.
+
+    # version and doctor skip config validation
+    if args.command in ("version", "doctor"):
+        handler = COMMAND_MAP.get(args.command)
+        if handler:
+            handler(args)
+        else:
+            parser.print_help()
+        return
 
     # Validate the config up-front so users see a clear error instead of
     # a confusing KeyError somewhere deep in the call stack.

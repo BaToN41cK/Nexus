@@ -12,14 +12,22 @@
 - 🧠 **Контекст диалога**, история запросов, кэширование, стриминг ответов
 - 🎨 **Rich UI**: Markdown, подсветка кода, прогресс-бары, панели
 
+## Установка
+
+```bash
+# Простая установка одной командой
+pip install nexus-ai
+
+# Настройка API ключа
+cp ~/.nexus/.env.example ~/.nexus/.env
+# отредактируйте ~/.nexus/.env и вставьте GROQ_API_KEY
+```
+
+> **Примечание**: При первом запуске Nexus автоматически создаст конфигурационные файлы в `~/.nexus/`. Шаблоны `.env.example` и `config.yaml` поставляются внутри пакета.
+
 ## Быстрый старт
 
 ```bash
-# Установка
-pip install -e .
-cp config/.env.example config/.env
-# отредактируйте config/.env и вставьте GROQ_API_KEY
-
 # Обычный запрос
 nexus run "Привет! Что такое нейронные сети?"
 
@@ -28,6 +36,15 @@ nexus run "Что нового в Python 3.13?" --search
 
 # Интерактивный режим
 nexus interactive
+```
+
+## Разработка
+
+```bash
+# Установка в режиме разработки
+git clone https://github.com/your-username/nexus.git
+cd nexus
+pip install -e .[all]
 ```
 
 ## Документация

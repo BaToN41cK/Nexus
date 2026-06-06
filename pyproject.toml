@@ -75,6 +75,9 @@ Issues = "https://github.com/your-username/nexus/issues"
 [tool.setuptools.packages.find]
 include = ["nexus*"]
 
+[tool.setuptools.package-data]
+"*" = ["locale/*.json", "config/*.yaml", "config/.env.example"]
+
 [tool.black]
 line-length = 100
 
