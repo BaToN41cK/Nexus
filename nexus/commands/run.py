@@ -456,22 +456,13 @@ def run_command(args) -> None:
         full_prompt = f"{prompt}\n\nSummary of loaded content:\n{summary}"
 
     # --- Stream response (with or without web context) ---
-    # Strategy (simple and robust on every terminal):
-    #   * During streaming we emit one ``\r``-prefixed line per token
-    #     that contains the buffered response text + a streaming
-    #     cursor.  This is plain ANSI: no Rich ``Live`` widget, no
-    #     transient/flicker edge cases, no overlapping Panels.  It
-    #     works in any TTY that supports ``\r`` (every modern
-    #     terminal, including Windows Terminal, cmd.exe with VT100
-    #     and the bundled PowerShell).
-    #   * When the generator ends (or raises) we print a final
-    #     newline and then ``console.print(Panel(Markdown(...)))``
-    #     so the user sees the parsed, Pygments-highlighted
-    #     response with bold/italic, lists and fenced code blocks.
-    #   * If the API returned an error string in the middle of the
-    #     stream (e.g. ``[Ошибка Groq API: ...]``) we still show the
-    #     buffered text but render it as a plain ``Text`` panel —
-    #     Markdown cannot highlight a fake error fence gracefully.
+    # During streaming we display a Rich spinner so the user knows
+    # the model is working.  Once the generator finishes, we render
+    # the full response inside a Markdown-highlighted Panel.
+    # (The old ``\r``-prefixed raw-text trick broke for multi-line
+    # output because ``\\r`` only returns the cursor to column 0 of
+    # the *current* terminal line, causing the entire accumulated
+    # text to be rewritten on screen each token.)
     response_text = ""
     token_info: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     sources: List[str] = []
@@ -489,46 +480,43 @@ def run_command(args) -> None:
     else:
         gen = agent.generate_stream(full_prompt, system_prompt=system_prompt)
 
-    try:
-        for token in gen:
-            response_text += token
-            # Update the same line: \r returns the cursor to column 0
-            # so the next write replaces the previous text in place.
-            # Works in PowerShell, cmd.exe, Windows Terminal, Linux
-            # terminals, macOS Terminal, iTerm, etc.
-            sys.stdout.write(f"\r{response_text}\u258c")
-            sys.stdout.flush()
-    except Exception as e:
-        logger.exception("Streaming error")
-        streaming_failed = True
-        console.print(f"[red]Ошибка при стриминге: {e}[/red]")
-
-    # Move to a new line so the next Panel starts on its own row,
-    # not glued to the streamed text.
-    sys.stdout.write("\n")
-    sys.stdout.flush()
+    with Progress(
+        SpinnerColumn(spinner_name="dots", style="green"),
+        TextColumn("[green]Думаю..."),
+        console=console,
+        transient=True,
+    ) as progress:
+        progress.add_task("", total=None)
+        try:
+            for token in gen:
+                response_text += token
+        except Exception as e:
+            logger.exception("Streaming error")
+            streaming_failed = True
+            console.print(f"[red]Ошибка при стриминге: {e}[/red]")
 
     # --- Final frame: render the buffered text in a green Panel.
     # Use Markdown for a normal LLM response, plain Text when the
     # response is an error string (e.g. ``[Ошибка Groq API: ...]``)
     # or when the stream raised an exception.
     final_text = response_text.rstrip()
-    if final_text.endswith("\u258c"):
-        final_text = final_text[:-1].rstrip()
     # Heuristic: if the response looks like a Nexus/i18n error message
-    # (``[…]`` bracket on its own line, or contains ``Ошибка`` / ``Error``),
-    # render it as plain Text — no point in trying to highlight an
-    # error string.
-    stripped = final_text.strip()
+    # (starts with ``[`` on its own line, or the first line contains
+    # ``Ошибка`` / ``Error``), render it as plain Text — no point in
+    # trying to highlight an error string.
+    # NOTE: we only check the FIRST LINE of the response, not the entire
+    # body, because the LLM may include words like "Ошибка" inside
+    # code examples (e.g. ``return "Ошибка: деление на ноль"``).
+    first_line = final_text.split("\n", 1)[0].strip() if final_text else ""
     is_error_response = (
         streaming_failed
-        or stripped.startswith("[")
-        or "Ошибка" in final_text
-        or "Error" in final_text.split("\n", 1)[0]
+        or first_line.startswith("[")
+        or "Ошибка" in first_line
+        or "Error" in first_line
     )
     if final_text:
         body: object = (
-            Text(final_text, style=CACHE_CLEAR_GREEN)
+            Text(final_text)
             if is_error_response
             else Markdown(
                 final_text,
