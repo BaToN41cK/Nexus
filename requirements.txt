@@ -4,6 +4,7 @@ beautifulsoup4
 python-dotenv
 pyyaml
 rich
+pygments
 youtube-transcript-api
 pypdf
 python-docx

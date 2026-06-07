@@ -20,6 +20,8 @@
   "cmd.run_no_cache": "Игнорировать кэш",
   "cmd.run_search": "Включить web-поиск для этого запроса",
   "cmd.run_no_search": "Принудительно отключить web-поиск (перекрывает конфиг)",
+  "cmd.run_response_title": "Ответ",
+  "cmd.run_sources_title": "📚 Источники",
 
   "cmd.interactive_help": "Интерактивный режим",
   "cmd.interactive_search": "Включить web-поиск на каждом ходе",

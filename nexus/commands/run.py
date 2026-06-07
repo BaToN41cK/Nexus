@@ -21,6 +21,7 @@ from typing import List, Optional
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.live import Live
+from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
@@ -29,6 +30,7 @@ from nexus.core.agent import NexusAgent
 from nexus.core.config import NexusConfig, ConfigError, load_config as load_config_validated
 from nexus.core.content_loader import load
 from nexus.core.history import add_exchange, build_context
+from nexus.core.i18n import t
 from nexus.core.web_search import (
     WebSearcher,
     load_config_from_yaml,
@@ -282,22 +284,37 @@ def extract_urls(text: str) -> List[str]:
 CACHE_CLEAR_GREEN = "#00cc00"
 
 
+def _response_title() -> str:
+    """Translated title for the response Panel (e.g. "Ответ" / "Response")."""
+    return t("cmd.run_response_title")
+
+
+def _sources_title() -> str:
+    """Translated title for the sources Panel (e.g. "📚 Источники" / "📚 Sources")."""
+    return t("cmd.run_sources_title")
+
+
 def _render_response(text: str) -> Panel:
     """
-    Render a response inside a Panel whose border, title and text are
-    all coloured with the exact same green used by ``nexus cache-clear``
-    for the "Кэш, история запросов и история разговора очищены."
-    message (see :data:`CACHE_CLEAR_GREEN`).
+    Render a response inside a Panel whose border and title are coloured
+    with the exact same green used by ``nexus cache-clear`` for the
+    "Кэш, история запросов и история разговора очищены." message (see
+    :data:`CACHE_CLEAR_GREEN`).
+
+    The body is rendered as :class:`rich.markdown.Markdown`, so the LLM
+    response is parsed as Markdown: **bold** / *italic*, bullet and
+    numbered lists, ``inline code`` and fenced ```python``` code blocks
+    (with full Pygments syntax highlighting).
 
     Args:
-        text: Response text to render.
+        text: Response text (assumed to be Markdown).
 
     Returns:
-        Rich Panel with green content, green title and green border.
+        Rich Panel with a Markdown body, green title and green border.
     """
     return Panel(
-        Text(text, style=CACHE_CLEAR_GREEN),
-        title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+        Markdown(text, code_theme="monokai", inline_code_lexer="python"),
+        title=f"[{CACHE_CLEAR_GREEN}]{_response_title()}[/{CACHE_CLEAR_GREEN}]",
         border_style=CACHE_CLEAR_GREEN,
     )
 
@@ -439,16 +456,24 @@ def run_command(args) -> None:
         full_prompt = f"{prompt}\n\nSummary of loaded content:\n{summary}"
 
     # --- Stream response (with or without web context) ---
-    # Render the streamed response inside a Panel whose border, title
-    # and text all use the same green as `nexus cache-clear`
-    # (see :data:`CACHE_CLEAR_GREEN`).
+    # Strategy:
+    #   * During streaming we update the Live widget with a plain
+    #     ``Text`` (cheap, no Markdown parsing on every token — this
+    #     matters because the model may emit half-finished code fences
+    #     like ```python mid-stream, and re-parsing them on every token
+    #     would flicker).
+    #   * As soon as the generator raises ``StopIteration`` we replace
+    #     the panel body with a fully parsed ``Markdown`` instance so
+    #     the final frame has bold/italic, lists, and Pygments-highlighted
+    #     fenced code blocks. ``▌`` is stripped before the final render.
     response_text = ""
     token_info: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     sources: List[str] = []
+    title_md = f"[{CACHE_CLEAR_GREEN}]{_response_title()}[/{CACHE_CLEAR_GREEN}]"
     with Live(
         Panel(
             Text("", style=CACHE_CLEAR_GREEN),
-            title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+            title=title_md,
             border_style=CACHE_CLEAR_GREEN,
         ),
         console=console,
@@ -471,12 +496,12 @@ def run_command(args) -> None:
                     try:
                         token = next(gen)
                         response_text += token
-                        # Render as green text inside a green-bordered
-                        # Panel. The trailing ▌ is a streaming cursor.
+                        # During streaming: cheap green Text with a ▌
+                        # cursor at the end.  No Markdown parsing here.
                         live.update(
                             Panel(
                                 Text(response_text + "▌", style=CACHE_CLEAR_GREEN),
-                                title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+                                title=title_md,
                                 border_style=CACHE_CLEAR_GREEN,
                             )
                         )
@@ -494,14 +519,34 @@ def run_command(args) -> None:
             console.print(f"[red]Ошибка при запуске стриминга: {e}[/red]")
             return
 
+        # --- Final frame: re-render the buffered text as Markdown so the
+        # user sees proper bold/italic, lists, and syntax-highlighted code
+        # blocks (fenced ```python``` etc.).  The trailing ▌ cursor and any
+        # whitespace are stripped first.
+        final_text = response_text.rstrip()
+        if final_text.endswith("▌"):
+            final_text = final_text[:-1].rstrip()
+        if final_text:
+            live.update(
+                Panel(
+                    Markdown(
+                        final_text,
+                        code_theme="monokai",
+                        inline_code_lexer="python",
+                    ),
+                    title=title_md,
+                    border_style=CACHE_CLEAR_GREEN,
+                )
+            )
+
     # Print sources used (if any) for citation (also inside a Panel
     # using the same green as the response panel above).
     if sources:
         src_text = "\n".join(f"- {u}" for u in sources)
         console.print(
             Panel(
-                Text(src_text, style=CACHE_CLEAR_GREEN),
-                title=f"[{CACHE_CLEAR_GREEN}]\U0001f4da Источники[/{CACHE_CLEAR_GREEN}]",
+                Markdown(src_text, code_theme="monokai"),
+                title=f"[{CACHE_CLEAR_GREEN}]{_sources_title()}[/{CACHE_CLEAR_GREEN}]",
                 border_style=CACHE_CLEAR_GREEN,
             )
         )
