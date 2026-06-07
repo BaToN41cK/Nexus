@@ -8,6 +8,12 @@
   "cli.verbose": "Подробный вывод (debug)",
   "cli.config": "Путь к конфигурационному файлу (по умолчанию: {default})",
   "cli.commands_help": "Доступные команды",
+  "cli.options": "параметры:",
+  "cli.positional": "позиционные аргументы:",
+  "cli.help_action": "показать эту справку и выйти",
+  "cli.lang_help": "Язык интерфейса (по умолчанию: авто). Поддерживаются: {supported}",
+  "cli.banner_help": "Стиль ASCII-баннера (по умолчанию: из $NEXUS_BANNER или 'classic'). Доступны: {available}",
+  "cli.usage": "Использование: ",
 
   "cmd.run_help": "Отправить запрос агенту",
   "cmd.run_prompt": "Текст запроса",
@@ -53,6 +59,12 @@
   "cmd.status_nexus_dir": "Nexus directory",
   "cmd.status_yes": "Да",
   "cmd.status_no": "Нет",
+
+  "cmd.version_help": "Показать версию Nexus",
+  "cmd.doctor_help": "Запустить диагностику",
+  "cmd.banner_help": "Показать ASCII-баннер Nexus (превью всех стилей)",
+  "cmd.banner_name_help": "Имя баннера. Если не указано — печатает дефолтный. Используйте 'all' для превью всех.",
+  "cmd.mcp_help": "Запустить MCP-сервер Nexus (stdio). Для Claude Desktop / Cursor.",
 
   "search.toggle_on": "🔍 Web-поиск: ВКЛ (бэкенд {backend})",
   "search.toggle_off": "🔍 Web-поиск: ВЫКЛ (включите: !search on)",

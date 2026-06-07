@@ -159,7 +159,11 @@ def cmd_interactive(args) -> None:
             logger.debug("prompt_toolkit init failed: %s", e)
 
     def _read():
-        prompt_text = f"[bold green]{t('cmd.interactive_prompt')}[/bold green]"
+        # The translated prompt (e.g. "Вы: " / "You: ") is plain text.
+        # Don't wrap it in Rich markup — both ``session.prompt()`` (from
+        # prompt_toolkit) and ``console.input()`` would otherwise show
+        # the brackets literally.
+        prompt_text = t("cmd.interactive_prompt")
         if session is not None:
             return session.prompt(prompt_text)
         return console.input(prompt_text)
@@ -483,6 +487,13 @@ def cmd_status(args) -> None:
         t("cmd.status_history_file"),
         t("cmd.status_yes") if history_exists else t("cmd.status_no"),
     )
+
+    table.add_row(t("cmd.status_cache_entries"), str(len(cache_files)))
+    table.add_row(t("cmd.status_cache_size"), f"{cache_size / 1024:.1f} KB")
+    table.add_row(
+        t("cmd.status_history_file"),
+        t("cmd.status_yes") if history_exists else t("cmd.status_no"),
+    )
     table.add_row(t("cmd.status_history_size"), f"{history_size / 1024:.1f} KB")
     table.add_row(t("cmd.status_history_lines"), str(history_lines))
     table.add_row(t("cmd.status_nexus_dir"), NEXUS_DIR)
@@ -573,6 +584,16 @@ def cmd_web_search(args) -> None:
         )
 
 
+# NOTE: we don't subclass argparse's HelpFormatter because Python 3.14
+# initialises the ``_optionals`` / ``_positionals`` / ``_usage_prefix``
+# attributes lazily, so setting them in ``__init__`` raises AttributeError.
+# Instead, the section titles are translated on the parser itself right
+# after construction (see ``build_parser()``), and the help action is
+# registered manually with a translated description.
+
+
+
+
 class _LogoHelpParser(argparse.ArgumentParser):
     """ArgumentParser subclass that prints the Nexus logo before help text."""
 
@@ -583,11 +604,52 @@ class _LogoHelpParser(argparse.ArgumentParser):
         super().print_help(file)
 
 
+class _LocalizedSubparser(_LogoHelpParser):
+    """Subparser that ships with localised help text and section titles.
+
+    We can't simply reuse :class:`_LogoHelpParser` because argparse adds
+    ``-h/--help`` automatically on construction with a hard-coded English
+    description.  This subclass disables that and re-registers ``-h/--help``
+    with a translated description, then overrides the built-in section
+    titles (``"options"`` and ``"positional arguments"``) on the parser's
+    formatter groups.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs["add_help"] = False
+        super().__init__(*args, **kwargs)
+        # Section titles for the two default formatter groups.
+        self._optionals.title = t("cli.options")
+        self._positionals.title = t("cli.positional")
+        # Localised -h/--help.
+        self.add_argument(
+            "-h", "--help",
+            action="help",
+            default=argparse.SUPPRESS,
+            help=t("cli.help_action"),
+        )
+
+
 def build_parser():
     parser = _LogoHelpParser(
         prog="nexus",
         description=t("cli.title"),
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,  # we register a localised -h/--help manually below
+    )
+    # Translate argparse's built-in section titles ("options", "positional
+    # arguments", ...) so the help screen is fully localised.  These
+    # attributes live on the formatter's action groups and are filled in
+    # as soon as the first argument is added.
+    parser._optionals.title = t("cli.options")
+    parser._positionals.title = t("cli.positional")
+    # Localised "usage:" prefix that argparse prepends to the usage line.
+    # Register the help flag ourselves with a translated description.
+    parser.add_argument(
+        "-h", "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help=t("cli.help_action"),
     )
     parser.add_argument("--verbose", action="store_true", help=t("cli.verbose"))
     parser.add_argument(
@@ -600,22 +662,16 @@ def build_parser():
         "--lang",
         choices=list(supported_languages()),
         default=None,
-        help=(
-            "Interface language (default: auto-detect). "
-            "Supported: " + ", ".join(supported_languages())
-        ),
+        help=t("cli.lang_help", supported=", ".join(supported_languages())),
     )
     parser.add_argument(
         "--banner",
         choices=list(list_banners()),
         default=None,
-        help=(
-            "ASCII banner style (default: from $NEXUS_BANNER or 'classic'). "
-            "Available: " + ", ".join(list_banners())
-        ),
+        help=t("cli.banner_help", available=", ".join(list_banners())),
     )
 
-    subparsers = parser.add_subparsers(dest="command", help=t("cli.commands_help"))
+    subparsers = parser.add_subparsers(parser_class=_LocalizedSubparser, dest="command", help=t("cli.commands_help"))
 
     run_parser = subparsers.add_parser("run", help=t("cmd.run_help"))
     run_parser.add_argument("prompt", type=str, help=t("cmd.run_prompt"))
@@ -670,29 +726,26 @@ def build_parser():
     subparsers.add_parser("history", help=t("cmd.history_help"))
     subparsers.add_parser("cache-clear", help=t("cmd.cache_clear_help"))
     subparsers.add_parser("status", help=t("cmd.status_help"))
-    subparsers.add_parser("version", help="Show Nexus version")
-    subparsers.add_parser("doctor", help="Run diagnostics")
+    subparsers.add_parser("version", help=t("cmd.version_help"))
+    subparsers.add_parser("doctor", help=t("cmd.doctor_help"))
 
     # `nexus banner [name]` — показать ASCII-баннер (для превью и демо).
     banner_parser = subparsers.add_parser(
         "banner",
-        help="Print the Nexus banner (preview all styles).",
+        help=t("cmd.banner_help"),
     )
     banner_parser.add_argument(
         "name",
         nargs="?",
         default=None,
-        help=(
-            "Banner style to print. If omitted, prints the default one. "
-            "Use 'all' to preview every available banner."
-        ),
+        help=t("cmd.banner_name_help"),
     )
 
     # `nexus mcp` — run the MCP stdio server so MCP-aware clients (Claude
     # Desktop, Cursor, etc.) can use Nexus as a tool.  See nexus/mcp_server.py.
     subparsers.add_parser(
         "mcp",
-        help="Run the Nexus MCP server (stdio). For Claude Desktop / Cursor.",
+        help=t("cmd.mcp_help"),
     )
 
     return parser

@@ -8,6 +8,12 @@
   "cli.verbose": "Verbose output (debug)",
   "cli.config": "Path to config file (default: {default})",
   "cli.commands_help": "Available commands",
+  "cli.options": "options",
+  "cli.positional": "positional arguments",
+  "cli.help_action": "show this help message and exit",
+  "cli.lang_help": "Interface language (default: auto-detect). Supported: {supported}",
+  "cli.banner_help": "ASCII banner style (default: from $NEXUS_BANNER or 'classic'). Available: {available}",
+  "cli.usage": "usage: ",
 
   "cmd.run_help": "Send a prompt to the agent",
   "cmd.run_prompt": "Prompt text",
@@ -53,6 +59,12 @@
   "cmd.status_nexus_dir": "Nexus directory",
   "cmd.status_yes": "Yes",
   "cmd.status_no": "No",
+
+  "cmd.version_help": "Show Nexus version",
+  "cmd.doctor_help": "Run diagnostics",
+  "cmd.banner_help": "Print the Nexus ASCII banner (preview all styles)",
+  "cmd.banner_name_help": "Banner style to print. If omitted, prints the default one. Use 'all' to preview every banner.",
+  "cmd.mcp_help": "Run the Nexus MCP server (stdio). For Claude Desktop / Cursor.",
 
   "search.toggle_on": "🔍 Web-search: ON (backend {backend})",
   "search.toggle_off": "🔍 Web-search: OFF (enable: !search on)",
