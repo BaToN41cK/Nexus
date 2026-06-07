@@ -14,13 +14,13 @@ import hashlib
 import logging
 import os
 import re
+import sys
 import time
 from datetime import datetime
 from typing import List, Optional
 
 from dotenv import load_dotenv
 from rich.console import Console
-from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -456,87 +456,89 @@ def run_command(args) -> None:
         full_prompt = f"{prompt}\n\nSummary of loaded content:\n{summary}"
 
     # --- Stream response (with or without web context) ---
-    # Strategy:
-    #   * During streaming we update the Live widget with a plain
-    #     ``Text`` + streaming cursor.  Re-parsing the whole Markdown
-    #     on every token would flicker whenever the model emits a
-    #     half-finished code fence like ```python mid-stream, and some
-    #     Rich ``Live`` implementations also don't refresh ``Markdown``
-    #     renderables correctly on every tick.
-    #   * Once the generator is exhausted we close the Live widget and
-    #     re-print the same content as a proper ``Panel(Markdown(...))``
-    #     so the user sees bold/italic, lists, and Pygments-highlighted
-    #     fenced code blocks in their final form.
+    # Strategy (simple and robust on every terminal):
+    #   * During streaming we emit one ``\r``-prefixed line per token
+    #     that contains the buffered response text + a streaming
+    #     cursor.  This is plain ANSI: no Rich ``Live`` widget, no
+    #     transient/flicker edge cases, no overlapping Panels.  It
+    #     works in any TTY that supports ``\r`` (every modern
+    #     terminal, including Windows Terminal, cmd.exe with VT100
+    #     and the bundled PowerShell).
+    #   * When the generator ends (or raises) we print a final
+    #     newline and then ``console.print(Panel(Markdown(...)))``
+    #     so the user sees the parsed, Pygments-highlighted
+    #     response with bold/italic, lists and fenced code blocks.
+    #   * If the API returned an error string in the middle of the
+    #     stream (e.g. ``[Ошибка Groq API: ...]``) we still show the
+    #     buffered text but render it as a plain ``Text`` panel —
+    #     Markdown cannot highlight a fake error fence gracefully.
     response_text = ""
     token_info: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     sources: List[str] = []
     title_md = f"[{CACHE_CLEAR_GREEN}]{_response_title()}[/{CACHE_CLEAR_GREEN}]"
     streaming_failed = False
-    with Live(
-        Panel(
-            Text("", style=CACHE_CLEAR_GREEN),
-            title=title_md,
-            border_style=CACHE_CLEAR_GREEN,
-        ),
-        console=console,
-        refresh_per_second=10,
-        transient=True,  # transient=True makes the Live frame disappear
-                         # once the block exits, so the Markdown Panel
-                         # below replaces it cleanly (no overlapping box).
-    ) as live:
-        try:
-            if web_searcher is not None:
-                gen, sources = agent.search_and_answer_stream(
-                    prompt=prompt,
-                    web_searcher=web_searcher,
-                    web_config=web_config,
-                    system_prompt=system_prompt,
-                )
-            else:
-                gen = agent.generate_stream(full_prompt, system_prompt=system_prompt)
-            # Iterate the generator in the simplest possible way.  This
-            # works for any iterable that yields string tokens and
-            # naturally terminates (no manual StopIteration handling).
-            for token in gen:
-                response_text += token
-                # During streaming: cheap green Text with a ▌ cursor.
-                # No Markdown parsing here.
-                live.update(
-                    Panel(
-                        Text(response_text + "▌", style=CACHE_CLEAR_GREEN),
-                        title=title_md,
-                        border_style=CACHE_CLEAR_GREEN,
-                    )
-                )
-        except Exception as e:
-            logger.exception("Streaming error")
-            streaming_failed = True
-            console.print(f"[red]Ошибка при стриминге: {e}[/red]")
+    is_error_response = False
 
-    # --- Final frame: print the buffered text as a fresh Panel whose
-    # body is a fully-parsed ``Markdown`` renderable.  Strip the
-    # trailing streaming cursor and any whitespace before parsing.
+    if web_searcher is not None:
+        gen, sources = agent.search_and_answer_stream(
+            prompt=prompt,
+            web_searcher=web_searcher,
+            web_config=web_config,
+            system_prompt=system_prompt,
+        )
+    else:
+        gen = agent.generate_stream(full_prompt, system_prompt=system_prompt)
+
+    try:
+        for token in gen:
+            response_text += token
+            # Update the same line: \r returns the cursor to column 0
+            # so the next write replaces the previous text in place.
+            # Works in PowerShell, cmd.exe, Windows Terminal, Linux
+            # terminals, macOS Terminal, iTerm, etc.
+            sys.stdout.write(f"\r{response_text}\u258c")
+            sys.stdout.flush()
+    except Exception as e:
+        logger.exception("Streaming error")
+        streaming_failed = True
+        console.print(f"[red]Ошибка при стриминге: {e}[/red]")
+
+    # Move to a new line so the next Panel starts on its own row,
+    # not glued to the streamed text.
+    sys.stdout.write("\n")
+    sys.stdout.flush()
+
+    # --- Final frame: render the buffered text in a green Panel.
+    # Use Markdown for a normal LLM response, plain Text when the
+    # response is an error string (e.g. ``[Ошибка Groq API: ...]``)
+    # or when the stream raised an exception.
     final_text = response_text.rstrip()
-    if final_text.endswith("▌"):
+    if final_text.endswith("\u258c"):
         final_text = final_text[:-1].rstrip()
-    if final_text and not streaming_failed:
-        console.print(
-            Panel(
-                Markdown(
-                    final_text,
-                    code_theme="monokai",
-                    inline_code_lexer="python",
-                ),
-                title=title_md,
-                border_style=CACHE_CLEAR_GREEN,
+    # Heuristic: if the response looks like a Nexus/i18n error message
+    # (``[…]`` bracket on its own line, or contains ``Ошибка`` / ``Error``),
+    # render it as plain Text — no point in trying to highlight an
+    # error string.
+    stripped = final_text.strip()
+    is_error_response = (
+        streaming_failed
+        or stripped.startswith("[")
+        or "Ошибка" in final_text
+        or "Error" in final_text.split("\n", 1)[0]
+    )
+    if final_text:
+        body: object = (
+            Text(final_text, style=CACHE_CLEAR_GREEN)
+            if is_error_response
+            else Markdown(
+                final_text,
+                code_theme="monokai",
+                inline_code_lexer="python",
             )
         )
-    elif final_text and streaming_failed:
-        # Fallback: if Markdown parsing blew up for any reason, at
-        # least show the buffered text in a styled Panel.
         console.print(
             Panel(
-                Text(final_text, style=CACHE_CLEAR_GREEN),
+                body,
                 title=title_md,
                 border_style=CACHE_CLEAR_GREEN,
             )
