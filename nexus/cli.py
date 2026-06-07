@@ -16,7 +16,6 @@ if sys.version_info < (3, 9):
 
 from rich.console import Console
 from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -30,7 +29,8 @@ from nexus.commands.run import (
 )
 from nexus.core.agent import NexusAgent
 from nexus.core.config import ConfigError, load_config
-from nexus.core.logo import print_logo
+from nexus.core.banners import available_banners
+from nexus.core.logo import list_banners, print_logo
 from nexus.core.history import clear as clear_conversation
 from nexus.core.i18n import current_language, set_language, supported_languages, t
 from nexus.core.paths import (
@@ -90,7 +90,8 @@ def cmd_run(args) -> None:
 
 
 def cmd_interactive(args) -> None:
-    console.print(f"[bold cyan]{t('cmd.interactive_banner')}[/bold cyan]")
+    # Показываем баннер при старте сессии (использует --banner / $NEXUS_BANNER)
+    print_logo(console, banner=getattr(args, "banner", None))
     console.print(f"[dim]{t('cmd.interactive_exit_hint')}[/dim]\n")
     console.print(f"[dim]{t('cmd.interactive_commands_hint')}[/dim]\n")
 
@@ -246,9 +247,9 @@ def cmd_interactive(args) -> None:
             response_text = ""
             with Live(
                 Panel(
-                    Text("", style="#90EE90"),
-                    title="[#90EE90]Nexus[/#90EE90]",
-                    border_style="#90EE90",
+                    Text("", style="green"),
+                    title="[green]Nexus[/green]",
+                    border_style="green",
                 ),
                 console=console,
                 refresh_per_second=10,
@@ -257,23 +258,13 @@ def cmd_interactive(args) -> None:
                 try:
                     for token in gen:
                         response_text += token
-                        try:
-                            md = Markdown(response_text + " ", code_theme="monokai")
-                            live.update(
-                                Panel(
-                                    md,
-                                    title="[#90EE90]Nexus[/#90EE90]",
-                                    border_style="#90EE90",
-                                )
+                        live.update(
+                            Panel(
+                                Text(response_text + " ", style="green"),
+                                title="[green]Nexus[/green]",
+                                border_style="green",
                             )
-                        except Exception:
-                            live.update(
-                                Panel(
-                                    f"[#90EE90]{response_text}[/#90EE90]",
-                                    title="[#90EE90]Nexus[/#90EE90]",
-                                    border_style="#90EE90",
-                                )
-                            )
+                        )
                     try:
                         gen.throw(StopIteration)
                     except StopIteration:
@@ -292,9 +283,9 @@ def cmd_interactive(args) -> None:
                 src_text = "\n".join(f"- {u}" for u in sources)
                 console.print(
                     Panel(
-                        Text(src_text, style="#90EE90"),
-                        title=f"[#90EE90]{t('web.sources_title')}[/#90EE90]",
-                        border_style="#90EE90",
+                        Text(src_text, style="green"),
+                        title=f"[green]{t('web.sources_title')}[/green]",
+                        border_style="green",
                     )
                 )
 
@@ -444,6 +435,25 @@ def cmd_mcp(args) -> None:
     mcp_main()
 
 
+def cmd_banner(args) -> None:
+    """Предпросмотр ASCII-баннеров: один по имени или все (``nexus banner all``).
+
+    Приоритеты имени:
+      1. Позиционный аргумент ``nexus banner <name>``;
+      2. Флаг ``--banner <name>`` (если был передан без подкоманды);
+      3. ``None`` → используется дефолт из темы.
+    """
+    name = getattr(args, "name", None) or getattr(args, "banner", None)
+
+    if name and name.lower() == "all":
+        for n in list_banners():
+            console.print(f"\n[bold cyan]── {n} ──[/bold cyan]")
+            print_logo(console, banner=n)
+        return
+
+    print_logo(console, banner=name)
+
+
 def cmd_status(args) -> None:
     ensure_dirs()
 
@@ -510,7 +520,7 @@ def cmd_web_search(args) -> None:
 
     table = Table(title=t("cmd.search_table_title", query=query), show_lines=False)
     table.add_column("#", style="cyan", width=3)
-    table.add_column("Title", style="#90EE90")
+    table.add_column("Title", style="green")
     table.add_column("URL", style="dim")
     for i, r in enumerate(results, 1):
         table.add_row(str(i), r.title[:80], r.url)
@@ -556,9 +566,9 @@ def cmd_web_search(args) -> None:
         src_text = "\n".join(f"- {u}" for u in sources)
         console.print(
             Panel(
-                Text(src_text, style="#90EE90"),
-                title=f"[#90EE90]{t('web.sources_title')}[/#90EE90]",
-                border_style="#90EE90",
+                Text(src_text, style="green"),
+                title=f"[green]{t('web.sources_title')}[/green]",
+                border_style="green",
             )
         )
 
@@ -567,7 +577,9 @@ class _LogoHelpParser(argparse.ArgumentParser):
     """ArgumentParser subclass that prints the Nexus logo before help text."""
 
     def print_help(self, file=None):
-        print_logo(console)
+        # Используем --banner, если он указан; иначе — дефолт/env.
+        chosen = getattr(self, "_nexus_banner", None)
+        print_logo(console, banner=chosen)
         super().print_help(file)
 
 
@@ -591,6 +603,15 @@ def build_parser():
         help=(
             "Interface language (default: auto-detect). "
             "Supported: " + ", ".join(supported_languages())
+        ),
+    )
+    parser.add_argument(
+        "--banner",
+        choices=list(list_banners()),
+        default=None,
+        help=(
+            "ASCII banner style (default: from $NEXUS_BANNER or 'classic'). "
+            "Available: " + ", ".join(list_banners())
         ),
     )
 
@@ -652,6 +673,21 @@ def build_parser():
     subparsers.add_parser("version", help="Show Nexus version")
     subparsers.add_parser("doctor", help="Run diagnostics")
 
+    # `nexus banner [name]` — показать ASCII-баннер (для превью и демо).
+    banner_parser = subparsers.add_parser(
+        "banner",
+        help="Print the Nexus banner (preview all styles).",
+    )
+    banner_parser.add_argument(
+        "name",
+        nargs="?",
+        default=None,
+        help=(
+            "Banner style to print. If omitted, prints the default one. "
+            "Use 'all' to preview every available banner."
+        ),
+    )
+
     # `nexus mcp` — run the MCP stdio server so MCP-aware clients (Claude
     # Desktop, Cursor, etc.) can use Nexus as a tool.  See nexus/mcp_server.py.
     subparsers.add_parser(
@@ -671,6 +707,7 @@ COMMAND_MAP = {
     "status": cmd_status,
     "version": cmd_version,
     "doctor": cmd_doctor,
+    "banner": cmd_banner,
     "mcp": cmd_mcp,
 }
 
@@ -685,6 +722,16 @@ def _extract_lang_from_argv(argv):
     return None
 
 
+def _extract_banner_from_argv(argv):
+    """Best-effort extraction of ``--banner <value>`` from a sys.argv list."""
+    for i, arg in enumerate(argv):
+        if arg == "--banner" and i + 1 < len(argv):
+            return argv[i + 1]
+        if arg.startswith("--banner="):
+            return arg.split("=", 1)[1]
+    return None
+
+
 def main() -> None:
     # Apply the language BEFORE building the parser so that --help and the
     # description are already localised.  We peek at ``--lang`` directly
@@ -693,7 +740,14 @@ def main() -> None:
     if requested:
         set_language(requested)
 
+    # Same trick for --banner: if the user passed it, propagate it to
+    # the logo printer so ``--help``/``--version`` already show the chosen
+    # banner style.
+    chosen_banner = _extract_banner_from_argv(sys.argv)
+
     parser = build_parser()
+    parser._nexus_banner = chosen_banner  # используется в _LogoHelpParser
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -705,8 +759,8 @@ def main() -> None:
     # ``--lang`` was already honoured above; nothing else to do here.
     # The flag stays in the parser so it shows up in ``--help``.
 
-    # version and doctor skip config validation
-    if args.command in ("version", "doctor"):
+    # version, doctor и banner не требуют валидации конфига.
+    if args.command in ("version", "doctor", "banner"):
         handler = COMMAND_MAP.get(args.command)
         if handler:
             handler(args)

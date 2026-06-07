@@ -21,7 +21,6 @@ from typing import List, Optional
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.live import Live
-from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
@@ -274,25 +273,33 @@ def extract_urls(text: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
+# The exact shade of green used by `nexus cache-clear` for the
+# "Кэш, история запросов и история разговора очищены." message.
+# Matches the colour of plain ``[green]`` markup on Windows Terminal
+# (default colour scheme, ANSI 16-colour palette). Exposed as a hex
+# string so that the Panel border/title render with the *same* colour
+# as the message text below the panel.
+CACHE_CLEAR_GREEN = "#00cc00"
+
+
 def _render_response(text: str) -> Panel:
     """
-    Render a response inside a Panel, with Markdown support.
+    Render a response inside a Panel whose border, title and text are
+    all coloured with the exact same green used by ``nexus cache-clear``
+    for the "Кэш, история запросов и история разговора очищены."
+    message (see :data:`CACHE_CLEAR_GREEN`).
 
     Args:
         text: Response text to render.
 
     Returns:
-        Rich Panel with formatted content.
+        Rich Panel with green content, green title and green border.
     """
-    try:
-        md = Markdown(text, code_theme="monokai")
-        return Panel(md, title="[#90EE90]Ответ[/#90EE90]", border_style="#90EE90")
-    except Exception:
-        return Panel(
-            f"[#90EE90]{text}[/#90EE90]",
-            title="[#90EE90]Ответ[/#90EE90]",
-            border_style="#90EE90",
-        )
+    return Panel(
+        Text(text, style=CACHE_CLEAR_GREEN),
+        title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+        border_style=CACHE_CLEAR_GREEN,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -412,7 +419,7 @@ def run_command(args) -> None:
             web_searcher = WebSearcher(web_config, SEARCH_CACHE_DIR)
             console.print(
                 f"[blue]\U0001f50d Web-поиск:[/blue] бэкенд "
-                f"[#90EE90]{web_searcher.backend_name}[/#90EE90]"
+                f"[green]{web_searcher.backend_name}[/green]"
             )
         except Exception as e:
             logger.warning("Не удалось инициализировать WebSearcher: %s", e)
@@ -422,8 +429,8 @@ def run_command(args) -> None:
     if len(full_prompt) > summarize_threshold:
         console.print("[yellow]\U0001f4dd Контент большой, суммаризирую...[/yellow]")
         with Progress(
-            SpinnerColumn(spinner_name="dots", style="#90EE90"),
-            TextColumn("[#90EE90]Думаю..."),
+            SpinnerColumn(spinner_name="dots", style="green"),
+            TextColumn("[green]Думаю..."),
             console=console,
             transient=True,
         ) as progress:
@@ -432,14 +439,17 @@ def run_command(args) -> None:
         full_prompt = f"{prompt}\n\nSummary of loaded content:\n{summary}"
 
     # --- Stream response (with or without web context) ---
+    # Render the streamed response inside a Panel whose border, title
+    # and text all use the same green as `nexus cache-clear`
+    # (see :data:`CACHE_CLEAR_GREEN`).
     response_text = ""
     token_info: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     sources: List[str] = []
     with Live(
         Panel(
-            Text("", style="#90EE90"),
-            title="[#90EE90]Ответ[/#90EE90]",
-            border_style="#90EE90",
+            Text("", style=CACHE_CLEAR_GREEN),
+            title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+            border_style=CACHE_CLEAR_GREEN,
         ),
         console=console,
         refresh_per_second=10,
@@ -461,20 +471,15 @@ def run_command(args) -> None:
                     try:
                         token = next(gen)
                         response_text += token
-                        # Render as Markdown for live preview
-                        try:
-                            md = Markdown(response_text + "▌", code_theme="monokai")
-                            live.update(
-                                Panel(md, title="[#90EE90]Ответ[/#90EE90]", border_style="#90EE90")
+                        # Render as green text inside a green-bordered
+                        # Panel. The trailing ▌ is a streaming cursor.
+                        live.update(
+                            Panel(
+                                Text(response_text + "▌", style=CACHE_CLEAR_GREEN),
+                                title=f"[{CACHE_CLEAR_GREEN}]Ответ[/{CACHE_CLEAR_GREEN}]",
+                                border_style=CACHE_CLEAR_GREEN,
                             )
-                        except Exception:
-                            live.update(
-                                Panel(
-                                    f"[#90EE90]{response_text}[/#90EE90]",
-                                    title="[#90EE90]Ответ[/#90EE90]",
-                                    border_style="#90EE90",
-                                )
-                            )
+                        )
                     except StopIteration as e:
                         # Generator finished - return value is in e.value
                         if hasattr(e, 'value') and e.value:
@@ -489,14 +494,15 @@ def run_command(args) -> None:
             console.print(f"[red]Ошибка при запуске стриминга: {e}[/red]")
             return
 
-    # Print sources used (if any) for citation
+    # Print sources used (if any) for citation (also inside a Panel
+    # using the same green as the response panel above).
     if sources:
         src_text = "\n".join(f"- {u}" for u in sources)
         console.print(
             Panel(
-                Text(src_text, style="#90EE90"),
-                title="[#90EE90]\U0001f4da Источники[/#90EE90]",
-                border_style="#90EE90",
+                Text(src_text, style=CACHE_CLEAR_GREEN),
+                title=f"[{CACHE_CLEAR_GREEN}]\U0001f4da Источники[/{CACHE_CLEAR_GREEN}]",
+                border_style=CACHE_CLEAR_GREEN,
             )
         )
 
@@ -519,4 +525,4 @@ def run_command(args) -> None:
         f"Completion: {token_info.get('completion_tokens', 0)} | "
         f"Total: {token_info.get('total_tokens', 0)}"
     )
-    console.print(f"[#90EE90]{token_str}[/#90EE90]")
+    console.print(f"[green]{token_str}[/green]")
