@@ -171,7 +171,7 @@ env | grep -i nexus
 env | grep -i api_key
 
 # Проверить через Nexus
-nexus doctor
+nexus debug
 nexus status
 ```
 
@@ -189,7 +189,7 @@ echo $GROQ_API_KEY
 cat ~/.nexus/.env
 
 # Запустите диагностику
-nexus doctor
+nexus debug
 ```
 
 ### Переменная не применяется

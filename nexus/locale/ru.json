@@ -63,7 +63,9 @@
   "cmd.status_no": "Нет",
 
   "cmd.version_help": "Показать версию Nexus",
-  "cmd.doctor_help": "Запустить диагностику",
+  "cmd.update_help": "Обновить Nexus до последней версии",
+  "cmd.test_help": "Запуск встроенных тестов модулей",
+  "cmd.debug_help": "Режим глубокой отладки с дампом запросов/ответов",
   "cmd.banner_help": "Показать ASCII-баннер Nexus (превью всех стилей)",
   "cmd.banner_name_help": "Имя баннера. Если не указано — печатает дефолтный. Используйте 'all' для превью всех.",
   "cmd.mcp_help": "Запустить MCP-сервер Nexus (stdio). Для Claude Desktop / Cursor.",

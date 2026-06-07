@@ -33,7 +33,7 @@ pip install --upgrade nexus
 
 ```bash
 nexus version
-nexus doctor
+nexus debug
 ```
 
 ### Шаг 3. Обновите конфигурацию

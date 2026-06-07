@@ -17,7 +17,7 @@
 ## Текущий статус
 
 Nexus v1.0.0 включает:
-- ✅ CLI с командами `run`, `interactive`, `search`, `history`, `status`, `cache-clear`, `doctor`, `version`
+- ✅ CLI с командами `run`, `interactive`, `search`, `history`, `status`, `cache-clear`, `update`, `test`, `debug`, `version`
 - ✅ LLM-провайдеры: Groq, OpenAI, Anthropic, Ollama
 - ✅ Web-поиск: DuckDuckGo, Tavily, SearXNG, Bing
 - ✅ Загрузка контента: YouTube, PDF, DOCX, PPTX, Excel, веб-страницы

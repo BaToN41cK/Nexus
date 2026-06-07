@@ -199,7 +199,7 @@ class GroqProvider(BaseProvider):
             logger.error("Groq API error: %s", e)
             error_msg = str(e)
             if "403" in error_msg or "Access denied" in error_msg:
-                return {"text": "[Ошибка 403: Доступ к API запрещён. Проверьте:\n1. API-ключ в GROQ_API_KEY (nexus doctor)\n2. Подключение к интернету / VPN\n3. Или используйте локальный Ollama: pip install nexus[ollama]]", "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                return {"text": "[Ошибка 403: Доступ к API запрещён. Проверьте:\n1. API-ключ в GROQ_API_KEY (nexus debug)\n2. Подключение к интернету / VPN\n3. Или используйте локальный Ollama: pip install nexus[ollama]]", "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             return {"text": f"[Ошибка Groq API: {e}]", "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         except Exception as e:
             logger.exception("Unexpected error during Groq request")

@@ -64,7 +64,7 @@ echo "GROQ_API_KEY=gsk_ваш_ключ_сюда" > ~/.nexus/.env
 
 ```bash
 # Проверить, что всё работает (покажет версии, конфиг, найденные ключи)
-nexus doctor
+nexus debug
 
 # Первый запрос
 nexus run "Привет! Что такое нейронные сети?"
@@ -76,7 +76,7 @@ nexus run "Что нового в Python 3.13?" --search
 nexus interactive
 ```
 
-**Готово.** Дальше `nexus doctor` поможет, если что-то пошло не так.
+**Готово.** Дальше `nexus debug` поможет, если что-то пошло не так.
 
 ---
 
@@ -166,7 +166,7 @@ nexus search "запрос" --fetch   # поиск + прогон через LLM
 nexus history                   # показать историю запросов
 nexus status                    # показать кэш / историю / пути
 nexus cache-clear               # очистить кэш и историю
-nexus doctor                    # диагностика окружения
+nexus debug                     # диагностика окружения
 nexus version                   # версия
 nexus --lang ru run "..."       # русский интерфейс
 nexus --lang en run "..."       # английский интерфейс

@@ -13,7 +13,9 @@
 - [Команда history](#команда-history)
 - [Команда cache-clear](#команда-cache-clear)
 - [Команда status](#команда-status)
-- [Команда doctor](#команда-doctor)
+- [Команда update](#команда-update)
+- [Команда test](#команда-test)
+- [Команда debug](#команда-debug)
 - [Команда version](#команда-version)
 - [Команда mcp](#команда-mcp)
 - [Команды интерактивного режима](#команды-интерактивного-режима)
@@ -244,44 +246,124 @@ Web-поиск:
 
 ---
 
-## Команда `doctor`
+## Команда `update`
 
-Диагностика окружения: проверка Python, API-ключей, провайдеров, FTS5.
+Обновление Nexus до последней версии через pip.
 
 ```bash
-nexus doctor
+nexus update
 ```
-
-### Что проверяется
-
-| Проверка | Описание |
-|----------|----------|
-| Python | Версия Python (нужен 3.9+) |
-| API-ключи | Наличие `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY` |
-| Провайдеры | Доступность SDK провайдеров (`groq`, `openai`, `anthropic`, `ollama`) |
-| Зависимости | Наличие `requests`, `beautifulsoup4`, `rich`, и т.д. |
-| FTS5 | Поддержка полнотекстового поиска в SQLite |
-| Конфиг | Наличие и корректность `config.yaml` |
-| .env | Наличие файла `.env` |
 
 ### Пример вывода
 
 ```
-🔍 Диагостика Nexus:
+Nexus Update — current v1.0.0
 
-✅ Python: 3.11.5
-✅ GROQ_API_KEY: найден
-✅ groq SDK: установлен
-✅ rich: установлен
-✅ requests: установлен
-✅ beautifulsoup4: установлен
-✅ youtube-transcript-api: установлен
-✅ pypdf: установлен
-✅ FTS5: поддерживается
-✅ Конфиг: ~/.nexus/config.yaml
-✅ .env: ~/.nexus/.env
+Updating Nexus from PyPI...
 
-Всё в порядке! Nexus готов к работе.
+✅ Update completed successfully!
+  Successfully installed nexus-x.x.x
+```
+
+---
+
+## Команда `test`
+
+Запуск встроенных тестов для проверки работоспособности всех модулей.
+
+```bash
+nexus test
+```
+
+### Что проверяется
+
+| Модуль | Описание |
+|--------|----------|
+| Configuration | Загрузка конфигурации |
+| Agent | Инициализация агента |
+| History | Система истории |
+| i18n | Интернационализация |
+| Paths | Пути и директории |
+| Banners | ASCII-баннеры |
+| Logo | Логотип |
+| Web Search | Веб-поиск |
+| Run Command | Основная команда |
+| SQLite FTS5 | Полнотекстовый поиск |
+| Translations | Система переводов |
+| Web Search Config | Конфигурация поиска |
+
+### Пример вывода
+
+```
+Nexus Test — v1.0.0
+
+  ✅ Configuration        (nexus.core.config)  2ms
+  ✅ Agent                (nexus.core.agent)   5ms
+  ✅ History              (nexus.core.history)  1ms
+  ✅ i18n                 (nexus.core.i18n)     1ms
+  ✅ Paths                (nexus.core.paths)    0ms
+  ✅ Banners              (nexus.core.banners)  0ms
+  ✅ Logo                 (nexus.core.logo)     0ms
+  ✅ Web Search           (nexus.core.web_search) 3ms
+  ✅ Run Command          (nexus.commands.run)  1ms
+  ✅ SQLite FTS5          1ms
+  ✅ Translations         0ms
+  ✅ Web Search Config    1ms
+
+Result: 12/12 checks passed
+```
+
+---
+
+## Команда `debug`
+
+Режим глубокой отладки с дампом всех запросов/ответов и полной диагностикой.
+
+```bash
+nexus debug
+```
+
+### Что выводится
+
+| Раздел | Описание |
+|--------|----------|
+| System | Версия Python, платформа, версия Nexus |
+| Configuration | Все параметры конфига (API-ключи маскируются) |
+| API Keys | Состояние переменных окружения (маскировано) |
+| Providers | Установленные SDK провайдеров и их версии |
+| Dependencies | Установленные зависимости и их версии |
+| SQLite FTS5 | Наличие полнотекстового поиска |
+
+### Пример вывода
+
+```
+Nexus Debug — v1.0.0
+
+System
+  Python: 3.11.5 (/usr/bin/python3)
+  Platform: linux
+  Nexus: v1.0.0
+
+Configuration
+  ✅ Config loaded
+    provider: groq
+    groq_model: llama-3.3-70b-versatile
+    ...
+
+API Keys (masked)
+  ✅ groq: GROQ_API_KEY = gsk_****abc1
+  ⚠️  openai: OPENAI_API_KEY not set
+  ✅ ollama: no key needed
+
+Providers
+  ✅ groq: SDK installed (groq 0.x.x)
+  ⚠️  openai: SDK not installed
+  ...
+
+Dependencies
+  ✅ requests: 2.x.x
+  ✅ beautifulsoup4: 4.x.x
+  ...
 ```
 
 ---
@@ -432,8 +514,8 @@ nexus run "Привет"
 ### Диагностика
 
 ```bash
-# Проверить окружение
-nexus doctor
+# Глубокая отладка
+nexus debug
 
 # Показать версию
 nexus version
@@ -443,6 +525,12 @@ nexus status
 
 # Показать историю
 nexus history
+
+# Обновить Nexus
+nexus update
+
+# Запустить тесты модулей
+nexus test
 ```
 
 ### С произвольным конфигом

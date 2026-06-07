@@ -254,7 +254,7 @@ nexus search "запрос"
 nexus status
 
 # Диагностика
-nexus doctor
+nexus debug
 
 # Очистка
 nexus cache-clear

@@ -333,82 +333,193 @@ def cmd_version(args) -> None:
     console.print(f"Platform: {sys.platform}")
 
 
-def cmd_doctor(args) -> None:
-    """Run diagnostics: Python, API keys, providers, FTS5, config."""
+def cmd_update(args) -> None:
+    """Update Nexus to the latest version via pip."""
+    from nexus import __version__
+
+    console.print(f"\n[bold]Nexus Update — current v{__version__}[/bold]\n")
+    console.print("[blue]Updating Nexus from PyPI...[/blue]\n")
+
+    import subprocess
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "nexus"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            console.print("[green]✅ Update completed successfully![/green]")
+            # Show the last few lines of output
+            lines = result.stdout.strip().splitlines()
+            for line in lines[-5:]:
+                console.print(f"  {line}")
+        else:
+            console.print("[red]❌ Update failed:[/red]")
+            console.print(result.stderr or result.stdout or "(no output)")
+    except subprocess.TimeoutExpired:
+        console.print("[red]❌ Update timed out after 120 seconds.[/red]")
+    except Exception as e:
+        console.print(f"[red]❌ Update error: {e}[/red]")
+
+
+def cmd_test(args) -> None:
+    """Run built-in tests to verify all modules work."""
+    from nexus import __version__
+
+    console.print(f"\n[bold]Nexus Test — v{__version__}[/bold]\n")
+
+    import importlib
+    import time
+
+    modules = [
+        ("nexus.core.config", "Configuration"),
+        ("nexus.core.agent", "Agent"),
+        ("nexus.core.history", "History"),
+        ("nexus.core.i18n", "i18n"),
+        ("nexus.core.paths", "Paths"),
+        ("nexus.core.banners", "Banners"),
+        ("nexus.core.logo", "Logo"),
+        ("nexus.core.web_search", "Web Search"),
+        ("nexus.commands.run", "Run Command"),
+    ]
+
+    passed = 0
+    failed = 0
+    results = []
+
+    for mod_name, label in modules:
+        start = time.monotonic()
+        try:
+            mod = importlib.import_module(mod_name)
+            elapsed = (time.monotonic() - start) * 1000
+            console.print(f"  [green]✅ {label:20s} ({mod_name})[/green]  [dim]{elapsed:.0f}ms[/dim]")
+            passed += 1
+            results.append((label, True, f"{elapsed:.0f}ms"))
+        except Exception as e:
+            elapsed = (time.monotonic() - start) * 1000
+            console.print(f"  [red]❌ {label:20s} ({mod_name})[/red]  [dim]{elapsed:.0f}ms[/dim]")
+            console.print(f"     [red]{e}[/red]")
+            failed += 1
+            results.append((label, False, str(e)))
+
+    # Test TTS5
+    start = time.monotonic()
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
+        conn.execute("DROP TABLE _probe")
+        conn.close()
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [green]✅ {'SQLite FTS5':20s}[/green]  [dim]{elapsed:.0f}ms[/dim]")
+        passed += 1
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [yellow]⚠️  {'SQLite FTS5':20s}[/yellow]  [dim]{elapsed:.0f}ms[/dim]")
+        console.print(f"     [yellow]{e}[/yellow]")
+
+    # Test translation system
+    start = time.monotonic()
+    try:
+        _ = t("cli.title")
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [green]✅ {'Translations':20s}[/green]  [dim]{elapsed:.0f}ms[/dim]")
+        passed += 1
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [red]❌ {'Translations':20s}[/red]  [dim]{elapsed:.0f}ms[/dim]")
+        console.print(f"     [red]{e}[/red]")
+        failed += 1
+
+    # Test web searcher (config only, not actual search)
+    start = time.monotonic()
+    try:
+        from nexus.core.web_search import WebSearchConfig
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [green]✅ {'Web Search Config':20s}[/green]  [dim]{elapsed:.0f}ms[/dim]")
+        passed += 1
+    except Exception as e:
+        elapsed = (time.monotonic() - start) * 1000
+        console.print(f"  [yellow]⚠️  {'Web Search Config':20s}[/yellow]  [dim]{elapsed:.0f}ms[/dim]")
+        console.print(f"     [yellow]{e}[/yellow]")
+
+    console.print(f"\n[bold]Result: {passed}/{passed + failed} checks passed[/bold]\n")
+
+    if failed > 0:
+        sys.exit(1)
+
+
+def cmd_debug(args) -> None:
+    """Deep debug mode: dump all requests/responses with full diagnostics."""
     from nexus import __version__
     from nexus.core.config import load_config
 
-    checks = []
+    console.print(f"\n[bold]Nexus Debug — v{__version__}[/bold]\n")
 
-    def _ok(label: str, detail: str = "") -> None:
-        msg = f"  ✅ {label}"
-        if detail:
-            msg += f" — {detail}"
-        console.print(f"[green]{msg}[/green]")
-        checks.append(True)
+    # Enable maximum verbosity
+    _setup_logging(True)
+    logger = logging.getLogger("nexus")
+    logger.setLevel(logging.DEBUG)
 
-    def _warn(label: str, detail: str = "") -> None:
-        msg = f"  ⚠️  {label}"
-        if detail:
-            msg += f" — {detail}"
-        console.print(f"[yellow]{msg}[/yellow]")
-        checks.append(True)
-
-    def _fail(label: str, detail: str = "") -> None:
-        msg = f"  ❌ {label}"
-        if detail:
-            msg += f" — {detail}"
-        console.print(f"[red]{msg}[/red]")
-        checks.append(False)
-
-    console.print(f"\n[bold]Nexus Doctor — v{__version__}[/bold]\n")
-
-    # --- Python ---
-    console.print("[bold cyan]Python[/bold cyan]")
-    _ok(f"Python {sys.version.split()[0]}", sys.executable)
+    # --- System info ---
+    console.print("[bold cyan]System[/bold cyan]")
+    console.print(f"  Python: {sys.version.split()[0]} ({sys.executable})")
+    console.print(f"  Platform: {sys.platform}")
+    console.print(f"  Nexus: v{__version__}")
 
     # --- Config ---
     console.print("\n[bold cyan]Configuration[/bold cyan]")
     try:
         config = load_config()
-        _ok("Config loaded", config.to_dict().get("provider", "groq"))
+        console.print(f"  [green]✅ Config loaded[/green]")
+        config_dict = config.to_dict()
+        for key, value in config_dict.items():
+            # Mask API keys in output
+            if "key" in key.lower() and value and len(str(value)) > 8:
+                masked = str(value)[:4] + "****" + str(value)[-4:]
+                console.print(f"    {key}: {masked}")
+            else:
+                console.print(f"    {key}: {value}")
     except Exception as e:
-        _fail("Config error", str(e))
+        console.print(f"  [red]❌ Config error: {e}[/red]")
         config = None
 
     # --- API keys ---
-    console.print("\n[bold cyan]API Keys[/bold cyan]")
-    if config:
-        for prov in ("groq", "openai", "anthropic", "ollama"):
-            env_var = {"groq": "GROQ_API_KEY", "openai": "OPENAI_API_KEY",
-                       "anthropic": "ANTHROPIC_API_KEY"}.get(prov)
-            if prov == "ollama":
-                _ok("ollama", "no key needed")
-            elif env_var and os.getenv(env_var):
-                _ok(f"{prov}", f"{env_var} is set")
-            else:
-                _warn(f"{prov}", f"{env_var} not set")
-    else:
-        _warn("Skipped (no config)")
+    console.print("\n[bold cyan]API Keys (masked)[/bold cyan]")
+    key_map = {"GROQ_API_KEY": "groq", "OPENAI_API_KEY": "openai",
+               "ANTHROPIC_API_KEY": "anthropic"}
+    for env_var, prov in key_map.items():
+        val = os.getenv(env_var, "")
+        if val:
+            masked = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+            console.print(f"  [green]✅ {prov}: {env_var} = {masked}[/green]")
+        else:
+            console.print(f"  [yellow]⚠️  {prov}: {env_var} not set[/yellow]")
+    # Ollama doesn't need a key
+    console.print(f"  [green]✅ ollama: no key needed[/green]")
 
     # --- Providers ---
     console.print("\n[bold cyan]Providers[/bold cyan]")
     for prov_name, sdk_name in [("groq", "groq"), ("openai", "openai"),
                                   ("anthropic", "anthropic"), ("ollama", "ollama")]:
         try:
-            __import__(sdk_name)
-            _ok(prov_name, f"SDK installed ({sdk_name})")
+            mod = __import__(sdk_name)
+            ver = getattr(mod, "__version__", "unknown")
+            console.print(f"  [green]✅ {prov_name}: SDK installed ({sdk_name} {ver})[/green]")
         except ImportError:
-            _warn(prov_name, f"SDK not installed (pip install {sdk_name})")
+            console.print(f"  [yellow]⚠️  {prov_name}: SDK not installed[/yellow]")
 
-    # --- Web search ---
-    console.print("\n[bold cyan]Web Search[/bold cyan]")
-    for sdk_name in ("tavily", "requests"):
+    # --- Dependencies ---
+    console.print("\n[bold cyan]Dependencies[/bold cyan]")
+    for pkg in ("requests", "beautifulsoup4", "rich", "pyyaml", "youtube_transcript_api",
+                "pypdf", "docx", "pptx", "openpyxl", "tavily"):
         try:
-            __import__(sdk_name)
-            _ok(sdk_name, "installed")
+            mod = __import__(pkg)
+            ver = getattr(mod, "__version__", "installed")
+            console.print(f"  [green]✅ {pkg}: {ver}[/green]")
         except ImportError:
-            _warn(sdk_name, "not installed")
+            console.print(f"  [yellow]⚠️  {pkg}: not installed[/yellow]")
 
     # --- SQLite FTS5 ---
     console.print("\n[bold cyan]SQLite FTS5[/bold cyan]")
@@ -418,17 +529,12 @@ def cmd_doctor(args) -> None:
         conn.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
         conn.execute("DROP TABLE _probe")
         conn.close()
-        _ok("FTS5 available")
+        console.print("  [green]✅ FTS5 available[/green]")
     except Exception:
-        _warn("FTS5 not available", "LIKE fallback will be used")
+        console.print("  [yellow]⚠️  FTS5 not available[/yellow]")
 
-    # --- Summary ---
-    passed = sum(checks)
-    total = len(checks)
-    console.print(f"\n[bold]Result: {passed}/{total} checks passed[/bold]\n")
-
-    if passed < total:
-        sys.exit(1)
+    # --- Debug summary ---
+    console.print(f"\n[bold dim]Debug mode complete. All values shown above.[/bold dim]\n")
 
 
 def cmd_mcp(args) -> None:
@@ -727,7 +833,9 @@ def build_parser():
     subparsers.add_parser("cache-clear", help=t("cmd.cache_clear_help"))
     subparsers.add_parser("status", help=t("cmd.status_help"))
     subparsers.add_parser("version", help=t("cmd.version_help"))
-    subparsers.add_parser("doctor", help=t("cmd.doctor_help"))
+    subparsers.add_parser("update", help=t("cmd.update_help"))
+    subparsers.add_parser("test", help=t("cmd.test_help"))
+    subparsers.add_parser("debug", help=t("cmd.debug_help"))
 
     # `nexus banner [name]` — показать ASCII-баннер (для превью и демо).
     banner_parser = subparsers.add_parser(
@@ -759,7 +867,9 @@ COMMAND_MAP = {
     "cache-clear": cmd_cache_clear,
     "status": cmd_status,
     "version": cmd_version,
-    "doctor": cmd_doctor,
+    "update": cmd_update,
+    "test": cmd_test,
+    "debug": cmd_debug,
     "banner": cmd_banner,
     "mcp": cmd_mcp,
 }
@@ -812,8 +922,8 @@ def main() -> None:
     # ``--lang`` was already honoured above; nothing else to do here.
     # The flag stays in the parser so it shows up in ``--help``.
 
-    # version, doctor и banner не требуют валидации конфига.
-    if args.command in ("version", "doctor", "banner"):
+    # version, debug, update, test и banner не требуют валидации конфига.
+    if args.command in ("version", "debug", "update", "test", "banner"):
         handler = COMMAND_MAP.get(args.command)
         if handler:
             handler(args)

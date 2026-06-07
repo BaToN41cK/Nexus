@@ -435,7 +435,7 @@ export GROQ_API_KEY=gsk_ваш_ключ
 ### Шаг 3. Проверьте
 
 ```bash
-nexus doctor
+nexus test
 ```
 
 ---
@@ -447,7 +447,7 @@ nexus doctor
 nexus version
 
 # Диагностика окружения
-nexus doctor
+nexus debug
 
 # Тестовый запрос
 nexus run "Привет! Что такое нейронные сети?"

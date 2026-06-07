@@ -98,7 +98,7 @@ pip install git+https://github.com/BaToN41cK/Nexus.git
 Проверить установку:
 ```bash
 nexus version
-nexus doctor
+nexus test
 ```
 
 #### Дополнительные провайдеры
@@ -162,7 +162,7 @@ echo "GROQ_API_KEY=gsk_ваш_ключ" > ~/.nexus/.env
 
 ```bash
 # Диагностика окружения (Python, ключи, провайдеры, FTS5)
-nexus doctor
+nexus debug
 
 # Одиночный запрос
 nexus run "Привет! Что такое нейронные сети?"

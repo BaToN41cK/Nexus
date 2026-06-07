@@ -386,7 +386,7 @@ timeout: 60  # по умолчанию 30
 
 1. Проверьте `~/.nexus/.env`
 2. Или установите переменную окружения: `export GROQ_API_KEY=your_key`
-3. Проверьте: `nexus doctor`
+3. Проверьте: `nexus debug`
 
 ### `Invalid configuration`
 

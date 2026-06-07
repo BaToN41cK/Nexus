@@ -260,11 +260,11 @@ cursor.execute("INSERT INTO exchanges_fts(exchanges_fts) VALUES('rebuild')")
 
 ## Мониторинг
 
-### nexus doctor
+### nexus debug
 
 Проверьте окружение:
 ```bash
-nexus doctor
+nexus debug
 ```
 
 ### nexus status

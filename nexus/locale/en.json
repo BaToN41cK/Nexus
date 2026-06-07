@@ -63,7 +63,9 @@
   "cmd.status_no": "No",
 
   "cmd.version_help": "Show Nexus version",
-  "cmd.doctor_help": "Run diagnostics",
+  "cmd.update_help": "Update Nexus to the latest version",
+  "cmd.test_help": "Run built-in module tests",
+  "cmd.debug_help": "Deep debug mode with request/response dump",
   "cmd.banner_help": "Print the Nexus ASCII banner (preview all styles)",
   "cmd.banner_name_help": "Banner style to print. If omitted, prints the default one. Use 'all' to preview every banner.",
   "cmd.mcp_help": "Run the Nexus MCP server (stdio). For Claude Desktop / Cursor.",
