@@ -117,6 +117,7 @@ class NexusConfig:
 
     # --- Conversation ---
     conversation_history_size: int = 5
+    react_max_iterations: int = 6
 
     # --- System prompt ---
     system_prompt: str = "Ты — полезный ассистент. Отвечай кратко и по делу."
@@ -171,6 +172,11 @@ class NexusConfig:
             raise ConfigError(
                 f"conversation_history_size must be >= 0, "
                 f"got: {self.conversation_history_size!r}"
+            )
+        if int(self.react_max_iterations) < 1:
+            raise ConfigError(
+                f"react_max_iterations must be >= 1, "
+                f"got: {self.react_max_iterations!r}"
             )
 
     # ------------------------------------------------------------------

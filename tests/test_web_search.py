@@ -7,6 +7,7 @@ import time
 import unittest
 from unittest.mock import MagicMock, patch
 
+from nexus.core.config import ConfigError
 from nexus.core.web_search import (
     BingBackend,
     DuckDuckGoBackend,
@@ -176,14 +177,10 @@ class TestWebSearcher(unittest.TestCase):
         ws = WebSearcher(cfg, self.tmp)
         self.assertEqual(ws.backend_name, "tavily")
 
-    def test_unknown_backend_falls_back_to_auto(self):
-        # Per design, an unknown backend name is NOT an error — it falls back
-        # to "auto", which (in this test environment without API keys) picks
-        # DuckDuckGo.
-        cfg = WebSearchConfig(enabled=True, backend="unknown")
-        with patch.dict(os.environ, {}, clear=True):
-            ws = WebSearcher(cfg, self.tmp)
-        self.assertEqual(ws.backend_name, "duckduckgo")
+    def test_unknown_backend_raises_error(self):
+        # An unknown backend name now raises ConfigError (validated in __post_init__).
+        with self.assertRaises(ConfigError):
+            WebSearchConfig(enabled=True, backend="unknown")
 
     def test_search_returns_empty_when_no_backend_available(self):
         # If DuckDuckGo backend is forced unavailable (no session, etc.) and no

@@ -18,7 +18,6 @@ import time
 from datetime import datetime
 from typing import List, Optional
 
-import yaml
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.live import Live
@@ -28,6 +27,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
 
 from nexus.core.agent import NexusAgent
+from nexus.core.config import NexusConfig, ConfigError, load_config as load_config_validated
 from nexus.core.content_loader import load
 from nexus.core.history import add_exchange, build_context
 from nexus.core.web_search import (
@@ -44,25 +44,8 @@ logging.getLogger("nexus.core.agent").setLevel(logging.WARNING)
 
 
 # ---------------------------------------------------------------------------
-# Default config (used when config file is missing)
+# Paths
 # ---------------------------------------------------------------------------
-
-_DEFAULT_CONFIG = {
-    "provider": "groq",
-    "groq_model": "llama-3.3-70b-versatile",
-    "base_url": "",
-    "max_content_length": 50000,
-    "summarize_threshold": 40000,
-    "cache_ttl": 3600,
-    "max_cache_size_mb": 50,
-    "max_retries": 3,
-    "rate_limit": 5,
-    "timeout": 30,
-    "max_tokens": 4096,
-    "temperature": 0.7,
-    "conversation_history_size": 5,
-    "system_prompt": "Ты — полезный ассистент. Отвечай кратко и по делу.",
-}
 
 NEXUS_DIR = os.path.join(os.path.expanduser("~"), ".nexus")
 CACHE_DIR = os.path.join(NEXUS_DIR, "cache")
@@ -77,8 +60,7 @@ os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
 
 def _load_config(config_path: Optional[str] = None) -> dict:
     """
-    Load configuration from YAML file. If the file doesn't exist,
-    create it from defaults and return defaults.
+    Load configuration from YAML file using the validated NexusConfig.
 
     Args:
         config_path: Path to YAML config file. If None, uses ~/.nexus/config.yaml.
@@ -86,37 +68,39 @@ def _load_config(config_path: Optional[str] = None) -> dict:
     Returns:
         Configuration dictionary.
     """
-    path = config_path or DEFAULT_CONFIG_PATH
-
-    if not os.path.isfile(path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
-            yaml.dump(_DEFAULT_CONFIG, fh, default_flow_style=False, allow_unicode=True)
-        logger.info("Created default config at %s", path)
-        return dict(_DEFAULT_CONFIG)
-
-    with open(path, "r", encoding="utf-8") as fh:
-        config = yaml.safe_load(fh) or {}
-    merged = dict(_DEFAULT_CONFIG)
-    merged.update(config)
-    return merged
+    try:
+        nexus_cfg = load_config_validated(config_path)
+        return nexus_cfg.to_dict()
+    except ConfigError as e:
+        logger.warning("Config validation error, falling back to defaults: %s", e)
+        return NexusConfig().to_dict()
 
 
-def _load_env(config_path: Optional[str] = None) -> Optional[str]:
+def _load_env(config_path: Optional[str] = None, config: Optional[dict] = None) -> Optional[str]:
     """
-    Load .env file and return GROQ_API_KEY (or OPENAI_API_KEY / ANTHROPIC_API_KEY
-    depending on provider).
+    Load .env file and return the API key for the configured provider.
 
     Search order (first found wins):
       1. NEXUS_ENV_PATH environment variable (if set)
       2. ~/.nexus/.env
       3. config/.env in current working directory
       4. config/.env walking up from current directory
-      5. GROQ_API_KEY environment variable (direct)
+      5. Direct environment variable
 
     If ~/.nexus/.env doesn't exist but a .env is found elsewhere,
     it will be COPIED to ~/.nexus/.env for future use.
     """
+    provider = (config or {}).get("provider", "groq")
+    env_var_map = {
+        "groq": "GROQ_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "ollama": None,
+    }
+    target_var = env_var_map.get(provider)
+    if target_var is None:
+        return ""  # Ollama: no key needed
+
     search_paths: List[str] = []
 
     nexus_env = os.environ.get("NEXUS_ENV_PATH")
@@ -139,10 +123,10 @@ def _load_env(config_path: Optional[str] = None) -> Optional[str]:
     for env_path in search_paths:
         if os.path.isfile(env_path):
             load_dotenv(env_path)
-            key = os.getenv("GROQ_API_KEY")
+            key = os.getenv(target_var)
             if key:
                 found_path = env_path
-                logger.debug("Loaded .env from %s", env_path)
+                logger.debug("Loaded .env from %s (key=%s)", env_path, target_var)
                 break
 
     if found_path and found_path != nexus_dotenv:
@@ -157,9 +141,9 @@ def _load_env(config_path: Optional[str] = None) -> Optional[str]:
             logger.debug("Could not copy .env to ~/.nexus/: %s", e)
 
     if found_path:
-        return os.getenv("GROQ_API_KEY")
+        return os.getenv(target_var)
 
-    return os.getenv("GROQ_API_KEY")
+    return os.getenv(target_var)
 
 
 def _resolve_api_key(config: dict) -> Optional[str]:
@@ -218,16 +202,20 @@ def _set_cache(key: str, text: str) -> None:
 
 def _save_history(prompt: str, response: str, tokens: dict) -> None:
     """Append an entry to the history log."""
-    timestamp = datetime.now().isoformat()
-    entry = (
-        f"=== {timestamp} ===\n"
-        f"Prompt: {prompt}\n"
-        f"Tokens: {tokens}\n"
-        f"Response:\n{response}\n\n"
-    )
-    history_file = os.path.join(HISTORY_DIR, "history.log")
-    with open(history_file, "a", encoding="utf-8") as fh:
-        fh.write(entry)
+    try:
+        timestamp = datetime.now().isoformat()
+        entry = (
+            f"=== {timestamp} ===\n"
+            f"Prompt: {prompt}\n"
+            f"Tokens: {tokens}\n"
+            f"Response:\n{response}\n\n"
+        )
+        history_file = os.path.join(HISTORY_DIR, "history.log")
+        os.makedirs(HISTORY_DIR, exist_ok=True)
+        with open(history_file, "a", encoding="utf-8") as fh:
+            fh.write(entry)
+    except OSError as e:
+        logger.warning("Failed to write history: %s", e)
 
 
 def _auto_clean_cache(max_size_mb: int = 50) -> None:
@@ -328,25 +316,30 @@ def run_command(args) -> None:
     no_search = getattr(args, "no_search", False)
 
     # --- Configuration ---
-    config = _load_config(config_path)
-    provider = config.get("provider", "groq")
-    groq_model = config.get("groq_model", "llama-3.3-70b-versatile")
-    base_url = config.get("base_url", "")
-    max_content_length = config.get("max_content_length", 50000)
-    summarize_threshold = config.get("summarize_threshold", 40000)
-    cache_ttl = config.get("cache_ttl", 3600)
-    max_cache_size_mb = config.get("max_cache_size_mb", 50)
-    timeout = config.get("timeout", 30)
-    max_tokens = config.get("max_tokens", 4096)
-    temperature = config.get("temperature", 0.7)
-    system_prompt = config.get("system_prompt")
-    conversation_history_size = config.get("conversation_history_size", 5)
+    try:
+        cfg = load_config_validated(config_path)
+    except ConfigError as e:
+        console.print(f"[red]Ошибка конфигурации: {e}[/red]")
+        return
+    provider = cfg.provider
+    groq_model = cfg.groq_model
+    base_url = cfg.base_url
+    max_content_length = cfg.max_content_length
+    summarize_threshold = cfg.summarize_threshold
+    cache_ttl = cfg.cache_ttl
+    max_cache_size_mb = cfg.max_cache_size_mb
+    timeout = cfg.timeout
+    max_tokens = cfg.max_tokens
+    temperature = cfg.temperature
+    system_prompt = cfg.system_prompt
+    conversation_history_size = cfg.conversation_history_size
+    config = cfg.to_dict()
 
     # Auto-clean cache if needed
     _auto_clean_cache(max_cache_size_mb)
 
     # --- API key ---
-    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH)
+    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH, config=config)
     if not api_key:
         # Try resolving from env vars by provider
         api_key = _resolve_api_key(config) or ""

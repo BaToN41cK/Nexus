@@ -60,86 +60,152 @@
 
 ## Установка
 
-### 1. Клонирование репозитория
+> **Требования:** Python 3.9+. Скачать можно с [python.org](https://www.python.org/downloads/) (при установке на Windows отметьте «Add Python to PATH»).
+
+### Вариант A. Установка как Python-пакет (рекомендуется для пользователей)
+
+Самый простой способ — одна команда в терминале. `pip` сам установит **все зависимости** (groq, requests, beautifulsoup4, rich, youtube-transcript-api, pypdf, python-docx, python-pptx, openpyxl и т.д.) и **создаст исполняемый файл `nexus` в PATH**. Никаких ручных правок PATH не потребуется.
 
 ```bash
-git clone <repo-url> nexus
-cd nexus
+# 1) Из PyPI (после публикации проекта)
+pip install nexus
+
+# 2) Прямо из GitHub (текущая актуальная версия, те же зависимости)
+pip install git+https://github.com/BaToN41cK/Nexus.git
 ```
 
-### 2. Создание виртуального окружения
+Проверить установку:
+```bash
+nexus version
+nexus doctor
+```
 
-**Windows (PowerShell):**
+#### Дополнительные провайдеры
+
+По умолчанию ставится **Groq** (рекомендуемый, бесплатный). Чтобы подключить OpenAI, Anthropic, Ollama или MCP-сервер:
+
+```bash
+# Все опциональные зависимости сразу
+pip install "nexus[all]"
+
+# Или по отдельности
+pip install "nexus[openai]"        # OpenAI: gpt-4o, gpt-4o-mini, ...
+pip install "nexus[anthropic]"     # Anthropic: claude-sonnet-4, ...
+pip install "nexus[ollama]"        # Локальный Ollama (без облака)
+pip install "nexus[mcp]"           # MCP-сервер для Claude Desktop / Cursor
+pip install "nexus[interactive]"   # Автодополнение в интерактивном режиме
+
+# Комбинация
+pip install "nexus[openai,mcp]"
+```
+
+Из GitHub синтаксис тот же:
+```bash
+pip install "nexus[all] @ git+https://github.com/BaToN41cK/Nexus.git"
+```
+
+#### 2) Получить API-ключ
+
+Самый быстрый путь — **Groq** (бесплатно, без карты):
+
+1. Зайдите на [console.groq.com](https://console.groq.com) → **API Keys → Create API Key**
+2. Скопируйте ключ вида `gsk_...`
+
+Для других провайдеров:
+
+| Провайдер | Где получить ключ |
+|-----------|-------------------|
+| OpenAI    | [platform.openai.com](https://platform.openai.com/api-keys) |
+| Anthropic | [console.anthropic.com](https://console.anthropic.com) |
+| Ollama    | не нужен (запускается локально: `ollama serve`) |
+
+#### 3) Сохранить ключ
+
+**Windows (PowerShell / cmd):**
 ```powershell
+mkdir %USERPROFILE%\.nexus
+"GROQ_API_KEY=gsk_ваш_ключ" | Out-File -FilePath $env:USERPROFILE\.nexus\.env -Encoding utf8
+```
+
+**Linux / macOS (bash / zsh):**
+```bash
+mkdir -p ~/.nexus
+echo "GROQ_API_KEY=gsk_ваш_ключ" > ~/.nexus/.env
+```
+
+> 💡 Если у вас уже установлена системная переменная `GROQ_API_KEY` (или `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), дополнительный файл создавать не нужно — Nexus подхватит её автоматически.
+
+> ℹ️ При первом запуске найденный `.env` копируется в `~/.nexus/.env` для последующего использования.
+
+#### 4) Первый запуск
+
+```bash
+# Диагностика окружения (Python, ключи, провайдеры, FTS5)
+nexus doctor
+
+# Одиночный запрос
+nexus run "Привет! Что такое нейронные сети?"
+
+# Запрос с актуальной информацией из интернета
+nexus run "Что нового в Python 3.13?" --search
+
+# Интерактивный диалог со стримингом
+nexus interactive
+```
+
+**Поддерживаемые провайдеры и переменные окружения:**
+
+| Провайдер | Переменная           | Пример модели                  | API-ключ |
+|-----------|----------------------|--------------------------------|----------|
+| groq      | `GROQ_API_KEY`       | `llama-3.3-70b-versatile`      | Обязателен |
+| openai    | `OPENAI_API_KEY`     | `gpt-4o-mini`                  | Обязателен |
+| anthropic | `ANTHROPIC_API_KEY`  | `claude-sonnet-4-20250514`     | Обязателен |
+| ollama    | _не требуется_       | `llama3.2` (локально)          | Не нужен |
+
+Переключение провайдера выполняется параметром `provider` в `~/.nexus/config.yaml` (при первом запуске создаётся автоматически из шаблона).
+
+---
+
+### Вариант B. Установка для разработчиков (editable-режим)
+
+Этот вариант — если вы хотите **править код** Nexus, собирать wheel/sdist, запускать тесты:
+
+```bash
+# 1) Клонировать репозиторий
+git clone https://github.com/BaToN41cK/Nexus.git
+cd Nexus
+
+# 2) Создать виртуальное окружение
 python -m venv venv
+# Windows (PowerShell)
 venv\Scripts\Activate.ps1
-```
-
-**Linux/macOS:**
-```bash
-python3 -m venv venv
+# Linux / macOS
 source venv/bin/activate
+
+# 3) Установить в editable-режиме (правки в коде сразу видны)
+pip install -e ".[all]"
+
+# 4) (Опционально) Собрать дистрибутив
+python -m pip install build
+python -m build
 ```
 
-### 3. Установка зависимостей
+#### Быстрая установка (скрипты)
 
-Установка в режиме разработки (рекомендуется — команда `nexus` появится в PATH):
-```bash
-pip install -e .
-```
-
-Или установка только зависимостей:
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Настройка `.env`
-
-Скопируйте файл `.env.example` в `.env` и укажите ваш API-ключ:
+В папке `scripts/` лежат автоматические скрипты (venv + установка + добавление в PATH):
 
 **Windows (PowerShell):**
-```powershell
-Copy-Item config\.env.example config\.env
-```
-
-**Linux/macOS:**
-```bash
-cp config/.env.example config/.env
-```
-
-Откройте `config/.env` и замените значение на ваш реальный ключ:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-> Получить API-ключ Groq можно на [console.groq.com](https://console.groq.com)
-
-#### Поддерживаемые провайдеры
-
-| Провайдер | Переменная       | Пример модели                  | API-ключ |
-|-----------|------------------|--------------------------------|----------|
-| groq      | `GROQ_API_KEY`   | `llama-3.3-70b-versatile`      | Обязателен |
-| openai    | `OPENAI_API_KEY` | `gpt-4o-mini`                  | Обязателен |
-| anthropic | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514`  | Обязателен |
-| ollama    | _не требуется_   | `llama3.2` (локально)          | Не нужен |
-
-Переключение провайдера выполняется параметром `provider` в `config/nexus.yaml`.
-
-### 5. Быстрая установка (скрипты)
-
-Скрипты автоматической установки лежат в папке `scripts/`.
-
-**Windows:**
 ```powershell
 .\scripts\install.ps1
 ```
 
-**Linux/macOS:**
+**Linux / macOS:**
 ```bash
 chmod +x scripts/install.sh
 ./scripts/install.sh
 ```
+
+> ⚠️ **Не требуется для обычных пользователей** — скрипты `install.ps1` / `install.sh` нужны только при локальной разработке. После `pip install nexus` Nexus уже доступен глобально.
 
 ---
 

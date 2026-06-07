@@ -40,7 +40,7 @@ pip install --upgrade pip
 
 # Install dependencies
 echo "Installing dependencies..."
-pip install -e project/
+pip install -e .
 
 # Copy .env if not exists
 if [ ! -f "config/.env" ]; then

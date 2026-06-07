@@ -31,6 +31,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from bs4 import BeautifulSoup
 
+from nexus.core.config import WebSearchConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -368,23 +370,6 @@ class BingBackend(SearchBackend):
 # ---------------------------------------------------------------------------
 # Facade
 # ---------------------------------------------------------------------------
-
-
-@dataclass
-class WebSearchConfig:
-    """Configuration for the WebSearcher facade."""
-
-    enabled: bool = False
-    backend: str = "auto"  # auto | duckduckgo | tavily | searxng | bing
-    max_results: int = 5
-    fetch_top_n: int = 3
-    timeout: int = 15
-    cache_enabled: bool = True
-    cache_ttl: int = 3600
-    # Optional explicit keys (otherwise read from env)
-    tavily_api_key: str = ""
-    bing_api_key: str = ""
-    searxng_url: str = ""
 
 
 class WebSearcher:

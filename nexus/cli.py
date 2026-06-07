@@ -124,7 +124,7 @@ def cmd_interactive(args) -> None:
     else:
         console.print(f"[dim]{t('search.toggle_off')}[/dim]")
 
-    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH)
+    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH, config={"provider": config.provider})
     if not api_key:
         env_var = config.api_key_env_var()
         if env_var:
@@ -519,7 +519,7 @@ def cmd_web_search(args) -> None:
     if not fetch:
         return
 
-    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH)
+    api_key = _load_env(config_path or DEFAULT_CONFIG_PATH, config={"provider": config.provider})
     if not api_key:
         env_var = config.api_key_env_var()
         if env_var:

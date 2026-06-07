@@ -7,16 +7,22 @@ name = "nexus"
 version = "1.0.0"
 description = "Nexus — ИИ-ассистент с загрузкой контента из URL и web-поиском"
 readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.9"
+license = { text = "MIT" }
 authors = [
-    {name = "Nexus Team"}
+    { name = "Nexus Team" },
 ]
-keywords = ["ai", "llm", "assistant", "cli", "web-search"]
+keywords = [
+    "ai", "assistant", "cli", "llm", "groq", "openai", "anthropic",
+    "ollama", "web-search", "youtube", "pdf", "docx",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Natural Language :: Russian",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -25,7 +31,9 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Utilities",
 ]
+requires-python = ">=3.9"
 dependencies = [
     "groq",
     "requests",
@@ -41,52 +49,36 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-openai = ["openai"]
-anthropic = ["anthropic"]
-ollama = ["ollama"]
-mcp = ["mcp"]
-interactive = ["prompt_toolkit"]
 all = [
     "openai",
     "anthropic",
     "ollama",
     "mcp",
-    "prompt_toolkit",
 ]
-dev = [
-    "pytest",
-    "pytest-cov",
-    "flake8",
-    "black",
-    "isort",
-    "mypy",
-    "pre-commit",
-]
+openai = ["openai"]
+anthropic = ["anthropic"]
+ollama = ["ollama"]
+mcp = ["mcp"]
+interactive = ["prompt-toolkit"]
+
+[project.urls]
+Homepage = "https://github.com/BaToN41cK/Nexus"
+Repository = "https://github.com/BaToN41cK/Nexus.git"
+Documentation = "https://github.com/BaToN41cK/Nexus/blob/main/docs/README.md"
 
 [project.scripts]
 nexus = "nexus.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/your-username/nexus"
-Documentation = "https://github.com/your-username/nexus/tree/main/docs"
-Repository = "https://github.com/your-username/nexus"
-Issues = "https://github.com/your-username/nexus/issues"
 
 [tool.setuptools.packages.find]
 include = ["nexus*"]
 
 [tool.setuptools.package-data]
-"*" = ["locale/*.json", "config/*.yaml", "config/.env.example"]
+nexus = [
+    "config/.env.example",
+    "config/nexus.yaml",
+    "locale/*.json",
+    "config/*",
+]
 
-[tool.black]
-line-length = 100
-
-[tool.isort]
-profile = "black"
-line_length = 100
-
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-ignore_missing_imports = true
+[tool.setuptools.package-dir]
+"" = "."
