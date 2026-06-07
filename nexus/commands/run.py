@@ -458,18 +458,20 @@ def run_command(args) -> None:
     # --- Stream response (with or without web context) ---
     # Strategy:
     #   * During streaming we update the Live widget with a plain
-    #     ``Text`` (cheap, no Markdown parsing on every token — this
-    #     matters because the model may emit half-finished code fences
-    #     like ```python mid-stream, and re-parsing them on every token
-    #     would flicker).
-    #   * As soon as the generator raises ``StopIteration`` we replace
-    #     the panel body with a fully parsed ``Markdown`` instance so
-    #     the final frame has bold/italic, lists, and Pygments-highlighted
-    #     fenced code blocks. ``▌`` is stripped before the final render.
+    #     ``Text`` + streaming cursor.  Re-parsing the whole Markdown
+    #     on every token would flicker whenever the model emits a
+    #     half-finished code fence like ```python mid-stream, and some
+    #     Rich ``Live`` implementations also don't refresh ``Markdown``
+    #     renderables correctly on every tick.
+    #   * Once the generator is exhausted we close the Live widget and
+    #     re-print the same content as a proper ``Panel(Markdown(...))``
+    #     so the user sees bold/italic, lists, and Pygments-highlighted
+    #     fenced code blocks in their final form.
     response_text = ""
     token_info: dict = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     sources: List[str] = []
     title_md = f"[{CACHE_CLEAR_GREEN}]{_response_title()}[/{CACHE_CLEAR_GREEN}]"
+    streaming_failed = False
     with Live(
         Panel(
             Text("", style=CACHE_CLEAR_GREEN),
@@ -478,7 +480,9 @@ def run_command(args) -> None:
         ),
         console=console,
         refresh_per_second=10,
-        transient=False,
+        transient=True,  # transient=True makes the Live frame disappear
+                         # once the block exits, so the Markdown Panel
+                         # below replaces it cleanly (no overlapping box).
     ) as live:
         try:
             if web_searcher is not None:
@@ -490,54 +494,53 @@ def run_command(args) -> None:
                 )
             else:
                 gen = agent.generate_stream(full_prompt, system_prompt=system_prompt)
-            # Collect all tokens and the final return value
-            try:
-                while True:
-                    try:
-                        token = next(gen)
-                        response_text += token
-                        # During streaming: cheap green Text with a ▌
-                        # cursor at the end.  No Markdown parsing here.
-                        live.update(
-                            Panel(
-                                Text(response_text + "▌", style=CACHE_CLEAR_GREEN),
-                                title=title_md,
-                                border_style=CACHE_CLEAR_GREEN,
-                            )
-                        )
-                    except StopIteration as e:
-                        # Generator finished - return value is in e.value
-                        if hasattr(e, 'value') and e.value:
-                            token_info = e.value
-                        break
-            except Exception as e:
-                logger.exception("Streaming error")
-                console.print(f"[red]Ошибка при стриминге: {e}[/red]")
-                return
-        except Exception as e:
-            logger.exception("Stream init error")
-            console.print(f"[red]Ошибка при запуске стриминга: {e}[/red]")
-            return
-
-        # --- Final frame: re-render the buffered text as Markdown so the
-        # user sees proper bold/italic, lists, and syntax-highlighted code
-        # blocks (fenced ```python``` etc.).  The trailing ▌ cursor and any
-        # whitespace are stripped first.
-        final_text = response_text.rstrip()
-        if final_text.endswith("▌"):
-            final_text = final_text[:-1].rstrip()
-        if final_text:
-            live.update(
-                Panel(
-                    Markdown(
-                        final_text,
-                        code_theme="monokai",
-                        inline_code_lexer="python",
-                    ),
-                    title=title_md,
-                    border_style=CACHE_CLEAR_GREEN,
+            # Iterate the generator in the simplest possible way.  This
+            # works for any iterable that yields string tokens and
+            # naturally terminates (no manual StopIteration handling).
+            for token in gen:
+                response_text += token
+                # During streaming: cheap green Text with a ▌ cursor.
+                # No Markdown parsing here.
+                live.update(
+                    Panel(
+                        Text(response_text + "▌", style=CACHE_CLEAR_GREEN),
+                        title=title_md,
+                        border_style=CACHE_CLEAR_GREEN,
+                    )
                 )
+        except Exception as e:
+            logger.exception("Streaming error")
+            streaming_failed = True
+            console.print(f"[red]Ошибка при стриминге: {e}[/red]")
+
+    # --- Final frame: print the buffered text as a fresh Panel whose
+    # body is a fully-parsed ``Markdown`` renderable.  Strip the
+    # trailing streaming cursor and any whitespace before parsing.
+    final_text = response_text.rstrip()
+    if final_text.endswith("▌"):
+        final_text = final_text[:-1].rstrip()
+    if final_text and not streaming_failed:
+        console.print(
+            Panel(
+                Markdown(
+                    final_text,
+                    code_theme="monokai",
+                    inline_code_lexer="python",
+                ),
+                title=title_md,
+                border_style=CACHE_CLEAR_GREEN,
             )
+        )
+    elif final_text and streaming_failed:
+        # Fallback: if Markdown parsing blew up for any reason, at
+        # least show the buffered text in a styled Panel.
+        console.print(
+            Panel(
+                Text(final_text, style=CACHE_CLEAR_GREEN),
+                title=title_md,
+                border_style=CACHE_CLEAR_GREEN,
+            )
+        )
 
     # Print sources used (if any) for citation (also inside a Panel
     # using the same green as the response panel above).
