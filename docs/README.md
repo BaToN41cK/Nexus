@@ -874,3 +874,14 @@ rm -rf ~/.nexus/
 ## Лицензия
 
 См. файл [LICENSE](LICENSE).
+
+---
+
+## 💬 Поддержка и обратная связь
+
+Если у вас возникли **вопросы, ошибки или проблемы** при использовании Nexus — не стесняйтесь обращаться:
+
+- 📧 **Email**: [Sergey.gerasimenko1208@gmail.com](mailto:Sergey.gerasimenko1208@gmail.com)
+- ✈️ **Telegram**: [@Baton41ck](https://t.me/Baton41ck)
+
+Мы постараемся ответить в кратчайшие сроки!
