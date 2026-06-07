@@ -172,7 +172,8 @@ def cmd_interactive(args) -> None:
         while True:
             try:
                 user_input = _read().strip()
-            except EOFError:
+            except (EOFError, KeyboardInterrupt):
+                console.print(f"\n[yellow]{t('cmd.interactive_goodbye')}[/yellow]")
                 break
             if not user_input:
                 continue
@@ -273,6 +274,10 @@ def cmd_interactive(args) -> None:
                         gen.throw(StopIteration)
                     except StopIteration:
                         pass
+                except KeyboardInterrupt:
+                    # Allow graceful cancellation during streaming
+                    console.print(f"\n[yellow]{t('cmd.interactive_interrupted')}[/yellow]")
+                    continue
                 except Exception as e:
                     logger.exception("Streaming error")
                     console.print(f"[red]{t('error.streaming', error=e)}[/red]")
@@ -294,7 +299,7 @@ def cmd_interactive(args) -> None:
                 )
 
     except KeyboardInterrupt:
-        console.print(f"\n[yellow]{t('cmd.interactive_interrupted')}[/yellow]")
+        console.print(f"\n[yellow]{t('cmd.interactive_goodbye')}[/yellow]")
 
 
 def cmd_history(args) -> None:

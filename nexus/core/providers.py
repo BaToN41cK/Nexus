@@ -13,6 +13,7 @@ Each provider implements the BaseProvider interface.
 import logging
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
@@ -156,6 +157,32 @@ class BaseProvider(ABC):
         msgs.append({"role": "user", "content": prompt})
         return msgs
 
+    # ----- Fallback helpers -------------------------------------------------
+
+    def _get_fallback_model(self) -> Optional[str]:
+        """Return the fallback model for this provider, or *None*."""
+        return FALLBACK_MODELS.get(self.config.name)
+
+    @staticmethod
+    def _is_error_response(text: str) -> bool:
+        """Return *True* if *text* looks like a Nexus error string."""
+        if not text:
+            return False
+        first_line = text.split("\n", 1)[0].strip()
+        return first_line.startswith("[") and (
+            "Ошибка" in first_line or "Error" in first_line
+        )
+
+    @contextmanager
+    def _use_model(self, model: str):
+        """Context manager that temporarily swaps ``self.config.model``."""
+        original = self.config.model
+        self.config.model = model
+        try:
+            yield
+        finally:
+            self.config.model = original
+
 
 # ---------------------------------------------------------------------------
 # Groq provider
@@ -175,11 +202,12 @@ class GroqProvider(BaseProvider):
         self._groq = groq_sdk
         self._client = groq_sdk.Groq(api_key=self.config.api_key)
 
-    def generate(
+    def _generate_impl(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
     ) -> dict:
+        """Core Groq generation (no automatic fallback)."""
         groq_sdk = self._groq
 
         try:
@@ -229,14 +257,35 @@ class GroqProvider(BaseProvider):
             "total_tokens": usage.total_tokens if usage else 0,
         }
 
-    def generate_stream(
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        stream: bool = False,
+    ) -> dict:
+        result = self._generate_impl(messages, stream=stream)
+
+        # Automatic fallback to a cheaper model on errors
+        if self._is_error_response(result.get("text", "")):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Groq model '%s' returned error, falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    result = self._generate_impl(messages, stream=stream)
+
+        return result
+
+    def _generate_stream_impl(
         self,
         messages: List[Dict[str, str]],
     ) -> Generator[str, None, dict]:
+        """Core Groq streaming generation (no automatic fallback)."""
         groq_sdk = self._groq
 
         try:
-            stream = self._client.chat.completions.create(
+            stream_obj = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=messages,
                 timeout=self.config.timeout,
@@ -255,7 +304,7 @@ class GroqProvider(BaseProvider):
 
         full_text = ""
         last_usage = None
-        for chunk in stream:
+        for chunk in stream_obj:
             if not chunk.choices:
                 if hasattr(chunk, "usage") and chunk.usage:
                     last_usage = chunk.usage
@@ -275,6 +324,30 @@ class GroqProvider(BaseProvider):
             "completion_tokens": usage.completion_tokens if usage else 0,
             "total_tokens": usage.total_tokens if usage else 0,
         }
+
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+    ) -> Generator[str, None, dict]:
+        gen = self._generate_stream_impl(messages)
+        first_token = next(gen, None)
+
+        if first_token is not None and self._is_error_response(first_token):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Groq streaming error on '%s', falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    return (yield from self._generate_stream_impl(messages))
+            # No fallback — yield the error
+            yield first_token
+            return {"text": first_token, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        if first_token is not None:
+            yield first_token
+        return (yield from gen)
 
 
 # ---------------------------------------------------------------------------
@@ -298,11 +371,12 @@ class OpenAIProvider(BaseProvider):
         self._client = OpenAI(**kwargs)
         self._openai = OpenAI
 
-    def generate(
+    def _generate_impl(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
     ) -> dict:
+        """Core OpenAI generation (no automatic fallback)."""
         try:
             completion = self._client.chat.completions.create(
                 model=self.config.model,
@@ -334,12 +408,32 @@ class OpenAIProvider(BaseProvider):
             "total_tokens": usage.total_tokens if usage else 0,
         }
 
-    def generate_stream(
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        stream: bool = False,
+    ) -> dict:
+        result = self._generate_impl(messages, stream=stream)
+
+        if self._is_error_response(result.get("text", "")):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "OpenAI model '%s' returned error, falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    result = self._generate_impl(messages, stream=stream)
+
+        return result
+
+    def _generate_stream_impl(
         self,
         messages: List[Dict[str, str]],
     ) -> Generator[str, None, dict]:
+        """Core OpenAI streaming generation (no automatic fallback)."""
         try:
-            stream = self._client.chat.completions.create(
+            stream_obj = self._client.chat.completions.create(
                 model=self.config.model,
                 messages=messages,
                 timeout=self.config.timeout,
@@ -351,7 +445,7 @@ class OpenAIProvider(BaseProvider):
 
         full_text = ""
         last_usage = None
-        for chunk in stream:
+        for chunk in stream_obj:
             if not chunk.choices:
                 if hasattr(chunk, "usage") and chunk.usage:
                     last_usage = chunk.usage
@@ -370,6 +464,29 @@ class OpenAIProvider(BaseProvider):
             "completion_tokens": last_usage.completion_tokens if last_usage else 0,
             "total_tokens": last_usage.total_tokens if last_usage else 0,
         }
+
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+    ) -> Generator[str, None, dict]:
+        gen = self._generate_stream_impl(messages)
+        first_token = next(gen, None)
+
+        if first_token is not None and self._is_error_response(first_token):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "OpenAI streaming error on '%s', falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    return (yield from self._generate_stream_impl(messages))
+            yield first_token
+            return {"text": first_token, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        if first_token is not None:
+            yield first_token
+        return (yield from gen)
 
 
 # ---------------------------------------------------------------------------
@@ -408,11 +525,12 @@ class AnthropicProvider(BaseProvider):
                 msgs.append(m)
         return system, msgs
 
-    def generate(
+    def _generate_impl(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
     ) -> dict:
+        """Core Anthropic generation (no automatic fallback)."""
         system, msgs = self._build_anthropic_messages(messages)
         try:
             response = self._client.messages.create(
@@ -450,10 +568,30 @@ class AnthropicProvider(BaseProvider):
             "total_tokens": input_tokens + output_tokens,
         }
 
-    def generate_stream(
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        stream: bool = False,
+    ) -> dict:
+        result = self._generate_impl(messages, stream=stream)
+
+        if self._is_error_response(result.get("text", "")):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Anthropic model '%s' returned error, falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    result = self._generate_impl(messages, stream=stream)
+
+        return result
+
+    def _generate_stream_impl(
         self,
         messages: List[Dict[str, str]],
     ) -> Generator[str, None, dict]:
+        """Core Anthropic streaming generation (no automatic fallback)."""
         system, msgs = self._build_anthropic_messages(messages)
         try:
             response = self._client.messages.create(
@@ -487,6 +625,29 @@ class AnthropicProvider(BaseProvider):
             "total_tokens": input_tokens + output_tokens,
         }
 
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+    ) -> Generator[str, None, dict]:
+        gen = self._generate_stream_impl(messages)
+        first_token = next(gen, None)
+
+        if first_token is not None and self._is_error_response(first_token):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Anthropic streaming error on '%s', falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    return (yield from self._generate_stream_impl(messages))
+            yield first_token
+            return {"text": first_token, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        if first_token is not None:
+            yield first_token
+        return (yield from gen)
+
 
 # ---------------------------------------------------------------------------
 # Ollama provider
@@ -506,11 +667,12 @@ class OllamaProvider(BaseProvider):
         self._ollama = ollama_sdk
         self._host = self.config.base_url or "http://localhost:11434"
 
-    def generate(
+    def _generate_impl(
         self,
         messages: List[Dict[str, str]],
         stream: bool = False,
     ) -> dict:
+        """Core Ollama generation (no automatic fallback)."""
         try:
             response = self._ollama.chat(
                 model=self.config.model,
@@ -540,12 +702,32 @@ class OllamaProvider(BaseProvider):
             "total_tokens": eval_count,
         }
 
-    def generate_stream(
+    def generate(
+        self,
+        messages: List[Dict[str, str]],
+        stream: bool = False,
+    ) -> dict:
+        result = self._generate_impl(messages, stream=stream)
+
+        if self._is_error_response(result.get("text", "")):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Ollama model '%s' returned error, falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    result = self._generate_impl(messages, stream=stream)
+
+        return result
+
+    def _generate_stream_impl(
         self,
         messages: List[Dict[str, str]],
     ) -> Generator[str, None, dict]:
+        """Core Ollama streaming generation (no automatic fallback)."""
         try:
-            stream = self._ollama.chat(
+            stream_obj = self._ollama.chat(
                 model=self.config.model,
                 messages=messages,
                 stream=True,
@@ -557,7 +739,7 @@ class OllamaProvider(BaseProvider):
 
         full_text = ""
         eval_count = 0
-        for chunk in stream:
+        for chunk in stream_obj:
             content = chunk.get("message", {}).get("content", "")
             if content:
                 full_text += content
@@ -570,6 +752,29 @@ class OllamaProvider(BaseProvider):
             "completion_tokens": eval_count,
             "total_tokens": eval_count,
         }
+
+    def generate_stream(
+        self,
+        messages: List[Dict[str, str]],
+    ) -> Generator[str, None, dict]:
+        gen = self._generate_stream_impl(messages)
+        first_token = next(gen, None)
+
+        if first_token is not None and self._is_error_response(first_token):
+            fallback = self._get_fallback_model()
+            if fallback and fallback != self.config.model:
+                logger.warning(
+                    "Ollama streaming error on '%s', falling back to '%s'",
+                    self.config.model, fallback,
+                )
+                with self._use_model(fallback):
+                    return (yield from self._generate_stream_impl(messages))
+            yield first_token
+            return {"text": first_token, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+        if first_token is not None:
+            yield first_token
+        return (yield from gen)
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +792,15 @@ DEFAULT_MODELS: Dict[str, str] = {
     "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4o",
     "anthropic": "claude-sonnet-4-20250514",
+    "ollama": "llama3.2",
+}
+
+# Fallback models: cheaper / more stable alternatives used when the primary
+# model returns an error (rate-limit, timeout, access denied, etc.).
+FALLBACK_MODELS: Dict[str, str] = {
+    "groq": "llama-3.1-8b-instant",
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-haiku-20241022",
     "ollama": "llama3.2",
 }
 

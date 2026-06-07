@@ -22,6 +22,7 @@
   "cmd.run_no_search": "Force-disable web-search (overrides config)",
   "cmd.run_response_title": "Response",
   "cmd.run_sources_title": "📚 Sources",
+  "cmd.run_interrupted": "Request interrupted by user.",
 
   "cmd.interactive_help": "Interactive chat mode",
   "cmd.interactive_search": "Enable web-search for every turn",

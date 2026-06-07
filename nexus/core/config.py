@@ -39,6 +39,15 @@ class ConfigError(ValueError):
 VALID_PROVIDERS: List[str] = ["groq", "openai", "anthropic", "ollama"]
 VALID_BACKENDS: List[str] = ["auto", "duckduckgo", "tavily", "searxng", "bing"]
 
+# Default model for each provider — used for auto-detection when the
+# provider changes but the model is still the default from another one.
+_DEFAULT_MODEL_BY_PROVIDER: Dict[str, str] = {
+    "groq": "llama-3.3-70b-versatile",
+    "openai": "gpt-4o",
+    "anthropic": "claude-sonnet-4-20250514",
+    "ollama": "llama3.2",
+}
+
 
 # ---------------------------------------------------------------------------
 # Dataclass
@@ -134,6 +143,21 @@ class NexusConfig:
             raise ConfigError(
                 f"provider must be one of {VALID_PROVIDERS}, got: {self.provider!r}"
             )
+        # Auto-detect model: if the current model is a default for a *different*
+        # provider, swap it to the correct default for the active provider.
+        if self.groq_model:
+            other_defaults = {
+                prov: model
+                for prov, model in _DEFAULT_MODEL_BY_PROVIDER.items()
+                if prov != self.provider
+            }
+            if self.groq_model in other_defaults.values():
+                new_model = _DEFAULT_MODEL_BY_PROVIDER.get(self.provider, self.groq_model)
+                logger.info(
+                    "Auto-switching model from '%s' to '%s' for provider '%s'",
+                    self.groq_model, new_model, self.provider,
+                )
+                self.groq_model = new_model
         if not self.groq_model:
             raise ConfigError("groq_model must not be empty")
         if int(self.timeout) <= 0:

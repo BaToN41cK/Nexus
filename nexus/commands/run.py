@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.text import Text
 
 from nexus.core.agent import NexusAgent
@@ -329,6 +329,17 @@ def run_command(args) -> None:
     Execute the `run` command: process prompt with URLs, call the agent,
     stream the response, and display the result.
     """
+    try:
+        _run_command_impl(args)
+    except KeyboardInterrupt:
+        console.print(f"\n[yellow]{t('cmd.run_interrupted')}[/yellow]")
+    except Exception as e:
+        logger.exception("Unexpected error in run_command")
+        console.print(f"[red]Неожиданная ошибка: {e}[/red]")
+
+
+def _run_command_impl(args) -> None:
+    """Internal implementation of the ``run`` command."""
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.debug("Verbose mode enabled")
@@ -376,13 +387,24 @@ def run_command(args) -> None:
     urls = extract_urls(prompt)
     loaded_parts = []
 
-    for url in urls:
-        console.print(f"[blue]📥 Загружаю:[/blue] {url}")
-        content = load(url)
-        if content.startswith("[Ошибка"):
-            console.print(f"[yellow]⚠️  {content}[/yellow]")
-        else:
-            loaded_parts.append(content)
+    if urls:
+        with Progress(
+            SpinnerColumn(spinner_name="dots", style="blue"),
+            TextColumn("[blue]{task.description}"),
+            BarColumn(bar_width=30),
+            TextColumn("[green]{task.completed}/{task.total}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            load_task = progress.add_task("Загрузка URL", total=len(urls))
+            for url in urls:
+                progress.update(load_task, description=f"[blue]📥 {url[:60]}[/blue]")
+                content = load(url)
+                if content.startswith("[Ошибка"):
+                    console.print(f"[yellow]⚠️  {content}[/yellow]")
+                else:
+                    loaded_parts.append(content)
+                progress.advance(load_task)
 
     # Build the final prompt
     if loaded_parts:
