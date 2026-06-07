@@ -188,13 +188,44 @@ nexus mcp                       # запустить MCP-сервер (stdio)
 
 ## Документация
 
+### Основная документация
+
 - [docs/README.md](docs/README.md) — полное руководство (установка, конфигурация, все команды, troubleshooting)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура проекта, диаграммы, паттерны проектирования
+- [docs/INSTALLATION.md](docs/INSTALLATION.md) — подробное руководство по установке на различных платформах
+- [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) — полный справочник конфигурации
+- [docs/CLI_REFERENCE.md](docs/CLI_REFERENCE.md) — справочник всех команд и флагов CLI
+- [docs/FAQ.md](docs/FAQ.md) — частые вопросы
+
+### Продвинутое использование
+
+- [docs/ADVANCED_USAGE.md](docs/ADVANCED_USAGE.md) — кастомные провайдеры, инструменты, пайплайны
+- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — тюнинг производительности
+- [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) — лучшие практики использования
 - [docs/EXAMPLES.md](docs/EXAMPLES.md) — реальные примеры использования (CLI, Python API, интеграция)
+
+### Компоненты
+
 - [docs/MCP.md](docs/MCP.md) — MCP-сервер (интеграция с Claude Desktop, Cursor, Continue)
 - [docs/MEMORY.md](docs/MEMORY.md) — подключаемая память (JSON/SQLite бэкенды)
 - [docs/REACT.md](docs/REACT.md) — ReAct-агент (многошаговое рассуждение с инструментами)
+
+### Разработка
+
 - [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) — участие в разработке
+- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — настройка окружения разработчика
+- [docs/TESTING.md](docs/TESTING.md) — руководство по тестированию
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура проекта, диаграммы, паттерны проектирования
+
+### Справочники
+
+- [docs/ENV_VARS.md](docs/ENV_VARS.md) — полный справочник переменных окружения
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — глоссарий терминов
+- [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) — интеграция с IDE и другими системами
+- [docs/MIGRATION.md](docs/MIGRATION.md) — миграция между версиями
+
+### Проект
+
+- [docs/ROADMAP.md](docs/ROADMAP.md) — дорожная карта проекта
 - [docs/CHANGELOG.md](docs/CHANGELOG.md) — история изменений
 - [docs/SECURITY.md](docs/SECURITY.md) — политика безопасности
 </content>
