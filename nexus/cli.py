@@ -588,16 +588,10 @@ def cmd_status(args) -> None:
         with open(HISTORY_LOG, "r", encoding="utf-8") as fh:
             history_lines = sum(1 for _ in fh)
 
+    # --- Basic system info table ---
     table = Table(title=f"[bold]{t('cmd.status_title')}[/bold]")
     table.add_column("Component", style="cyan")
     table.add_column("Value", style="green")
-
-    table.add_row(t("cmd.status_cache_entries"), str(len(cache_files)))
-    table.add_row(t("cmd.status_cache_size"), f"{cache_size / 1024:.1f} KB")
-    table.add_row(
-        t("cmd.status_history_file"),
-        t("cmd.status_yes") if history_exists else t("cmd.status_no"),
-    )
 
     table.add_row(t("cmd.status_cache_entries"), str(len(cache_files)))
     table.add_row(t("cmd.status_cache_size"), f"{cache_size / 1024:.1f} KB")
@@ -610,6 +604,151 @@ def cmd_status(args) -> None:
     table.add_row(t("cmd.status_nexus_dir"), NEXUS_DIR)
 
     console.print(table)
+
+    # --- Auto-detect providers and models ---
+    try:
+        from nexus.core.autodetect import detect_best_provider
+
+        detection = detect_best_provider()
+
+        prov_table = Table(
+            title=f"[bold]{t('cmd.status_providers_title')}[/bold]",
+            show_lines=False,
+        )
+        prov_table.add_column(t("cmd.status_provider"), style="cyan")
+        prov_table.add_column(t("cmd.status_model"), style="green")
+        prov_table.add_column("SDK", style="dim")
+        prov_table.add_column(t("cmd.status_api_key"), style="dim")
+        prov_table.add_column(t("cmd.status_provider"), style="dim")
+
+        for p in detection.available_providers:
+            avail_text = (
+                f"[green]{t('cmd.status_available')}[/green]"
+                if p.available
+                else f"[red]{t('cmd.status_unavailable')}[/red]"
+            )
+            sdk_text = "[green]✓[/green]" if p.sdk_installed else "[red]✗[/red]"
+            key_text = "[green]✓[/green]" if p.api_key else "[red]✗[/red]"
+            prov_table.add_row(
+                p.name, p.model, sdk_text, key_text, avail_text
+            )
+
+        console.print(prov_table)
+
+        console.print(
+            f"[bold]{t('cmd.status_best_provider')}:[/bold] "
+            f"[green]{detection.best_provider}[/green]  |  "
+            f"[bold]{t('cmd.status_best_model')}:[/bold] "
+            f"[green]{detection.best_model}[/green]"
+        )
+    except Exception as e:
+        logger.debug("Auto-detect failed: %s", e)
+
+    # --- Usage statistics ---
+    try:
+        from nexus.core.usage_stats import get_global_stats
+
+        stats = get_global_stats()
+
+        if stats.total_requests == 0:
+            console.print(
+                f"\n[cyan]{t('cmd.status_usage_title')}[/cyan]"
+            )
+            console.print(f"[dim]{t('cmd.status_no_data')}[/dim]")
+        else:
+            usage_table = Table(
+                title=f"[bold]{t('cmd.status_usage_title')}[/bold]",
+                show_lines=False,
+            )
+            usage_table.add_column("Metric", style="cyan")
+            usage_table.add_column("Value", style="green")
+
+            usage_table.add_row(
+                t("cmd.status_total_requests"), str(stats.total_requests)
+            )
+            usage_table.add_row(
+                t("cmd.status_total_tokens"), f"{stats.total_tokens:,}"
+            )
+            usage_table.add_row(
+                t("cmd.status_prompt_tokens"),
+                f"{stats.total_prompt_tokens:,}",
+            )
+            usage_table.add_row(
+                t("cmd.status_completion_tokens"),
+                f"{stats.total_completion_tokens:,}",
+            )
+            usage_table.add_row(
+                t("cmd.status_estimated_cost"),
+                f"${stats.estimated_cost():.4f}",
+            )
+            if stats.total_errors:
+                usage_table.add_row(
+                    t("cmd.status_total_errors"),
+                    f"[yellow]{stats.total_errors}[/yellow]",
+                )
+            if stats.total_sessions:
+                usage_table.add_row(
+                    t("cmd.status_total_sessions"), str(stats.total_sessions)
+                )
+            if stats.first_used:
+                usage_table.add_row(
+                    t("cmd.status_first_used"),
+                    stats.first_used[:19].replace("T", " "),
+                )
+            if stats.last_used:
+                usage_table.add_row(
+                    t("cmd.status_last_used"),
+                    stats.last_used[:19].replace("T", " "),
+                )
+
+            console.print()
+            console.print(usage_table)
+
+            # Per-provider breakdown
+            providers = sorted(set(
+                list(stats.provider_requests.keys())
+                + list(stats.provider_prompt_tokens.keys())
+            ))
+            if providers:
+                prov_breakdown = Table(
+                    title=f"[bold]{t('cmd.status_provider_breakdown')}[/bold]",
+                    show_lines=False,
+                )
+                prov_breakdown.add_column(t("cmd.status_provider"), style="cyan")
+                prov_breakdown.add_column("Requests", style="green")
+                prov_breakdown.add_column("Tokens", style="green")
+                prov_breakdown.add_column("Cost", style="green")
+                prov_breakdown.add_column("Errors", style="yellow")
+
+                for prov in providers:
+                    reqs = stats.provider_requests.get(prov, 0)
+                    ptok = stats.provider_prompt_tokens.get(prov, 0)
+                    ctok = stats.provider_completion_tokens.get(prov, 0)
+                    errs = stats.provider_errors.get(prov, 0)
+                    pcost = stats.estimated_cost(prov)
+                    err_str = str(errs) if errs else "0"
+                    prov_breakdown.add_row(
+                        prov, str(reqs), f"{ptok + ctok:,}", f"${pcost:.4f}", err_str
+                    )
+                console.print(prov_breakdown)
+
+            # Top models
+            top = sorted(stats.model_tokens.items(), key=lambda x: -x[1])[:5]
+            if top:
+                model_table = Table(
+                    title=f"[bold]{t('cmd.status_top_models')}[/bold]",
+                    show_lines=False,
+                )
+                model_table.add_column("Model", style="cyan")
+                model_table.add_column("Tokens", style="green")
+                model_table.add_column("Requests", style="green")
+                for model, tokens in top:
+                    reqs = stats.model_requests.get(model, 0)
+                    model_table.add_row(model, f"{tokens:,}", str(reqs))
+                console.print(model_table)
+
+    except Exception as e:
+        logger.debug("Usage stats failed: %s", e)
 
 
 def cmd_web_search(args) -> None:

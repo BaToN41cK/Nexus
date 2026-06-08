@@ -25,11 +25,18 @@ import logging
 import os
 import re
 import time
+import asyncio
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
+
+# Optional async HTTP client – used if available for faster I/O.
+try:
+    import aiohttp
+except ImportError:  # pragma: no cover
+    aiohttp = None
 
 from nexus.core.config import WebSearchConfig
 
@@ -150,7 +157,12 @@ class SearchBackend:
     # ---- helpers ----
 
     def _get(self, url: str, params: Optional[Dict[str, Any]] = None,
-             headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+              headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+        """Synchronous GET request using ``requests``.
+
+        This method is retained for compatibility when ``aiohttp`` is not
+        available or when a backend does not implement an async variant.
+        """
         try:
             resp = self.session.get(
                 url, params=params, headers=headers, timeout=self.timeout
@@ -161,8 +173,33 @@ class SearchBackend:
             logger.warning("[%s] HTTP error: %s", self.name, e)
             return None
 
+    async def _get_async(self, url: str, params: Optional[Dict[str, Any]] = None,
+                         headers: Optional[Dict[str, str]] = None) -> Optional[str]:
+        """Asynchronous GET request using ``aiohttp`` if available.
+
+        Falls back to the synchronous ``_get`` implementation when ``aiohttp``
+        cannot be imported. This provides a non‑blocking alternative for
+        backends that support async operation.
+        """
+        if aiohttp is None:
+            # aiohttp not installed – use the sync version in a thread.
+            return await asyncio.to_thread(self._get, url, params, headers)
+        try:
+            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, params=params, headers=headers) as resp:
+                    resp.raise_for_status()
+                    return await resp.text()
+        except Exception as e:
+            logger.warning("[%s] Async HTTP error: %s", self.name, e)
+            return None
+
     def _post(self, url: str, json_body: Dict[str, Any],
               headers: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+        """Synchronous POST request using ``requests``.
+
+        Kept for compatibility when async is not available.
+        """
         try:
             resp = self.session.post(
                 url, json=json_body, headers=headers, timeout=self.timeout
@@ -174,6 +211,25 @@ class SearchBackend:
             return None
         except ValueError as e:
             logger.warning("[%s] JSON decode error: %s", self.name, e)
+            return None
+
+    async def _post_async(self, url: str, json_body: Dict[str, Any],
+                          headers: Optional[Dict[str, str]] = None) -> Optional[Dict[str, Any]]:
+        """Asynchronous POST request using ``aiohttp`` if available.
+
+        Falls back to the synchronous version executed in a thread when
+        ``aiohttp`` is missing.
+        """
+        if aiohttp is None:
+            return await asyncio.to_thread(self._post, url, json_body, headers)
+        try:
+            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, json=json_body, headers=headers) as resp:
+                    resp.raise_for_status()
+                    return await resp.json()
+        except Exception as e:
+            logger.warning("[%s] Async HTTP error: %s", self.name, e)
             return None
 
 

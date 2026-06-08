@@ -1,5 +1,27 @@
 # Nexus — ИИ-ассистент
 
+[![Build Status](https://github.com/BaToN41cK/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/BaToN41cK/Nexus/actions)
+[![Coverage Status](https://coveralls.io/repos/github/BaToN41cK/Nexus/badge.svg?branch=main)](https://coveralls.io/github/BaToN41cK/Nexus?branch=main)
+[![PyPI version](https://badge.fury.io/py/nexus.svg)](https://pypi.org/project/nexus/)
+
+## Установка
+
+Для большинства пользователей достаточно выполнить одну команду:
+
+```bash
+pip install nexus
+```
+
+Если вы хотите установить последнюю версию из репозитория, используйте:
+
+```bash
+pip install git+https://github.com/BaToN41cK/Nexus.git
+```
+
+Эта команда установит все зависимости, создаст исполняемый файл `nexus` и добавит его в ваш `PATH`.
+
+> **Примечание:** Требуется Python 3.9 или новее.
+
 > 📖 Полная документация → [docs/README.md](docs/README.md)
 
 **Nexus** — это Python-CLI, который общается с LLM (Groq, OpenAI, Anthropic, Ollama) и умеет подмешивать в ответ **актуальную информацию из интернета** через встроенный web-поиск.
@@ -13,6 +35,25 @@
 - 🎨 **Rich UI**: Markdown, подсветка кода, прогресс-бары, панели
 
 ---
+
+## Примеры использования
+
+```bash
+# Простой запрос к LLM
+nexus run "Что такое нейронные сети?"
+
+# Запрос с актуальной информацией из интернета
+nexus run "Какие новинки в Python 3.13?" --search
+
+# Интерактивный диалог (стриминг, подсветка кода)
+nexus interactive
+
+# Поиск без LLM (получить только ссылки)
+nexus search "Лучшие практики CI/CD"
+
+# Поиск с генерацией ответа LLM
+nexus search "Лучшие практики CI/CD" --fetch
+```
 
 ## 🚀 Быстрая установка для пользователей (одна команда)
 

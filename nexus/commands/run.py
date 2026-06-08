@@ -491,6 +491,7 @@ def _run_command_impl(args) -> None:
     title_md = f"[{CACHE_CLEAR_GREEN}]{_response_title()}[/{CACHE_CLEAR_GREEN}]"
     streaming_failed = False
     is_error_response = False
+    error_type_for_stats = ""
 
     if web_searcher is not None:
         gen, sources = agent.search_and_answer_stream(
@@ -536,7 +537,33 @@ def _run_command_impl(args) -> None:
         or "Ошибка" in first_line
         or "Error" in first_line
     )
-    if final_text:
+
+    # --- Smart error parsing with solutions ---
+    if is_error_response and final_text:
+        try:
+            from nexus.core.error_parser import parse_error, format_diagnostic
+
+            diag = parse_error(
+                final_text, provider=provider, model=groq_model, timeout=timeout,
+            )
+            # Classify error type for stats
+            error_type_for_stats = diag.title or "unknown"
+            # Display the smart diagnostic panel
+            console.print(Panel(
+                format_diagnostic(diag, use_rich=True),
+                title=f"[bold red]🔴 {t('error.parsed_title')}[/bold red]",
+                border_style="red",
+            ))
+        except Exception as e:
+            logger.debug("Error parser failed: %s", e)
+            # Fallback: display raw error
+            if final_text:
+                console.print(Panel(
+                    Text(final_text),
+                    title=title_md,
+                    border_style=CACHE_CLEAR_GREEN,
+                ))
+    elif final_text:
         body: object = (
             Text(final_text)
             if is_error_response
@@ -586,3 +613,20 @@ def _run_command_impl(args) -> None:
         f"Total: {token_info.get('total_tokens', 0)}"
     )
     console.print(f"[green]{token_str}[/green]")
+
+    # --- Record usage statistics ---
+    try:
+        from nexus.core.usage_stats import record_request, record_error
+
+        record_request(
+            provider=provider,
+            model=groq_model,
+            prompt_tokens=token_info.get("prompt_tokens", 0),
+            completion_tokens=token_info.get("completion_tokens", 0),
+            total_tokens=token_info.get("total_tokens", 0),
+        )
+        # Record error if the response was an error
+        if is_error_response and error_type_for_stats:
+            record_error(provider=provider, error_type=error_type_for_stats)
+    except Exception as e:
+        logger.debug("Failed to record usage stats: %s", e)
