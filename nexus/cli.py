@@ -54,7 +54,6 @@ def _setup_logging(verbose: bool) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-
 def _build_interactive_completer():
     try:
         from prompt_toolkit.completion import WordCompleter
