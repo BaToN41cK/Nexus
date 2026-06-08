@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_LANG = "en"
-_SUPPORTED = ("ru", "en")
+_SUPPORTED = ("ru", "en", "es", "de", "fr")
 
 _translations: Dict[str, Dict[str, str]] = {}
 _current_lang: str = "en"
@@ -212,6 +212,59 @@ def current_language() -> str:
         return _current_lang
 
 
+def reload_locale(lang: Optional[str] = None) -> None:
+    """Reload translation files from disk.
+
+    If *lang* is ``None`` (default), all currently loaded translation
+    tables are refreshed.  If *lang* is specified, only that language
+    is reloaded.
+
+    This allows runtime dictionary updates without restarting the
+    application:  a user (or an administrator) can edit a ``.json``
+    locale file and then call ``reload_locale()`` to pick up the
+    changes immediately.
+    """
+    with _lock:
+        if lang is None:
+            for l in list(_translations):
+                _translations[l] = _load(l)
+        else:
+            lang = lang.lower().split("_")[0]
+            if lang in _SUPPORTED:
+                _translations[lang] = _load(lang)
+            else:
+                logger.debug("reload_locale: unknown language %r, ignored", lang)
+    logger.debug("Locale reloaded (lang=%s)", lang or "all")
+
+
+def add_language(lang_code: str, lang_name: str, translations: Dict[str, str]) -> None:
+    """Dynamically register a new language at runtime.
+
+    This function allows plugins or user-provided translation files to
+    inject a new language without modifying the ``locale/`` directory
+    or restarting the process.
+
+    Args:
+        lang_code: ISO 639-1 code (e.g. ``"pt"``, ``"it"``).
+        lang_name: Human-readable name for the ``_meta`` section.
+        translations: A flat ``{key: value}`` mapping of translation strings.
+
+    Raises:
+        ValueError: If *lang_code* is empty or unsupported characters.
+    """
+    if not lang_code or len(lang_code) != 2 or not lang_code.isalpha():
+        raise ValueError(f"Invalid language code: {lang_code!r}")
+    code = lang_code.lower()
+    with _lock:
+        # Add to supported languages tuple (immutable, so we rebuild it).
+        global _SUPPORTED
+        if code not in _SUPPORTED:
+            _SUPPORTED = _SUPPORTED + (code,)
+        # Store the translations.
+        _translations[code] = translations
+    logger.info("Dynamically added language '%s' (%s)", code, lang_name)
+
+
 def set_language(lang: str) -> str:
     """
     Switch to *lang* and load its translation table.
@@ -261,7 +314,7 @@ def t(key: str, **kwargs) -> str:
 # Initialisation
 # ---------------------------------------------------------------------------
 
-# Eagerly load both supported languages so ``t()`` never touches disk.
-_translations["en"] = _load("en")
-_translations["ru"] = _load("ru")
+# Eagerly load all supported languages so ``t()`` never touches disk.
+for _lang in _SUPPORTED:
+    _translations[_lang] = _load(_lang)
 set_language(_detect_default_lang())

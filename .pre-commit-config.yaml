@@ -1,32 +1,49 @@
 # See https://pre-commit.com for more information
 repos:
+  # ---------- General checks ----------
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
         args: ["--maxkb=500"]
       - id: check-merge-conflict
       - id: detect-private-key
+      - id: check-toml
+      - id: check-json
 
+  # ---------- Code formatting (black) ----------
   - repo: https://github.com/psf/black
-    rev: 24.4.2
+    rev: 25.1.0
     hooks:
       - id: black
         language_version: python3.11
+        args: [--line-length=100]
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.4.8
+  # ---------- Ruff: linting + import sorting + autofix ----------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
     hooks:
       - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
+        args: [--fix, --exit-non-zero-on-fix, --line-length=100]
         types_or: [python, pyi]
+      - id: ruff-format
+        args: [--line-length=100]
 
+  # ---------- Static type checking (mypy) ----------
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.10.0
+    rev: v1.15.0
     hooks:
       - id: mypy
-        additional_dependencies: [types-PyYAML]
-        args: [--ignore-missing-imports]
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+          - types-beautifulsoup4
+        args:
+          - --ignore-missing-imports
+          - --no-strict-optional
+          - --warn-redundant-casts
+          - --warn-unused-ignores

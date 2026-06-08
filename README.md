@@ -32,6 +32,13 @@ pip install git+https://github.com/BaToN41cK/Nexus.git
 - 🌐 **Web-поиск**: DuckDuckGo (без ключа), Tavily, SearXNG, Bing — через `nexus run "..." --search`
 - 📄 **Загрузка контента** по URL: веб-страницы, YouTube, PDF, DOCX, PPTX, Excel, txt
 - 🧠 **Контекст диалога**, история запросов, кэширование, стриминг ответов
+- 🧩 **ReAct-агент** — многошаговое рассуждение с вызовом инструментов
+- 🔌 **MCP-сервер** — интеграция с Claude Desktop, Cursor, Continue
+- 🧠 **Подключаемая память** — JSON и SQLite бэкенды с FTS5 поиском
+- 🧩 **Система плагинов** — свои провайдеры, бэкенды, команды, хуки
+- 🐍 **Python API** — использование в своих приложениях
+- 📊 **Статистика использования** — токены, стоимость, история
+- 🌍 **Интернационализация** — интерфейс на 5+ языках
 - 🎨 **Rich UI**: Markdown, подсветка кода, прогресс-бары, панели
 
 ---
@@ -205,25 +212,104 @@ nexus interactive               # интерактивный диалог
 nexus search "запрос"           # web-поиск без LLM
 nexus search "запрос" --fetch   # поиск + прогон через LLM
 nexus history                   # показать историю запросов
-nexus status                    # показать кэш / историю / пути
+nexus status                    # показать кэш / историю / пути / статистику
 nexus cache-clear               # очистить кэш и историю
 nexus debug                     # диагностика окружения
+nexus test                      # встроенный smoke-test модулей
+nexus update                    # обновить Nexus через pip
 nexus version                   # версия
+nexus banner                    # предпросмотр ASCII-баннеров
+nexus config edit               # интерактивный редактор конфига
 nexus --lang ru run "..."       # русский интерфейс
 nexus --lang en run "..."       # английский интерфейс
+nexus --banner <name> ...       # выбор ASCII-баннера
 nexus mcp                       # запустить MCP-сервер (stdio)
 ```
 
+> 📦 **Плагины:** Свои провайдеры, бэкенды, команды и хуки — через `~/.nexus/plugins/`. См. [docs/PLUGINS.md](docs/PLUGINS.md).
+> 🐍 **Python API:** Использование Nexus как библиотеки — в [docs/API.md](docs/API.md).
+
+--- 
+
+## 🔍 Сравнение возможностей
+
+### Провайдеры LLM
+
+| Провайдер | Переменная окружения | API-ключ | Поддержка стриминга | Fallback-модель |
+|-----------|----------------------|----------|-------------------|-----------------|
+| **Groq** (по умолчанию) | `GROQ_API_KEY` | ✅ | ✅ | `llama-3.1-8b-instant` |
+| **OpenAI** | `OPENAI_API_KEY` | ✅ | ✅ | `gpt-4o-mini` |
+| **Anthropic** | `ANTHROPIC_API_KEY` | ✅ | ✅ | `claude-3-5-haiku` |
+| **Ollama** | _не требуется_ | ❌ (локально) | ✅ | `llama3.2` |
+
+### Поисковые бэкенды
+
+| Бэкенд | API-ключ | Приоритет в auto | Примечание |
+|--------|----------|------------------|------------|
+| **DuckDuckGo** | ❌ | 4-й (fallback) | Не требует регистрации |
+| **Tavily** | ✅ | 1-й | Рекомендуется для LLM |
+| **Bing** | ✅ | 2-й | Azure Bing API |
+| **SearXNG** | ❌ (self-hosted URL) | 3-й | Требуется свой инстанс |
+| _Пользовательские_ | _— через плагины_ | _—_ | Через `register_search_backend()` |
+
+### Языки интерфейса
+
+| Язык | Код | Статус |
+|------|-----|--------|
+| Русский | `ru` | ✅ Полный перевод |
+| English | `en` | ✅ Полный перевод |
+| Español | `es` | ✅ Полный перевод |
+| Deutsch | `de` | ✅ Полный перевод |
+| Français | `fr` | ✅ Полный перевод |
+| _Любой другой_ | _— через `add_language()`_ | ✅ Динамическая регистрация |
+
+### Форматы загружаемого контента
+
+| Тип | Библиотека | Статус |
+|-----|-----------|--------|
+| Веб-страницы (HTML) | `requests` + `BeautifulSoup` | ✅ |
+| YouTube (транскрипты) | `youtube-transcript-api` | ✅ |
+| PDF | `pypdf` | ✅ |
+| DOCX | `python-docx` | ✅ |
+| PPTX | `python-pptx` | ✅ |
+| Excel (XLSX) | `openpyxl` | ✅ |
+| Текстовые файлы | встроено | ✅ |
+
 ---
 
-## 🔍 Что внутри
+## 🧩 Система плагинов
 
-| Провайдер | Переменная           | Ключ нужен? |
-|-----------|----------------------|-------------|
-| Groq (по умолчанию) | `GROQ_API_KEY`   | ✅ |
-| OpenAI    | `OPENAI_API_KEY`     | ✅ |
-| Anthropic | `ANTHROPIC_API_KEY`  | ✅ |
-| Ollama    | _не требуется_       | ❌ (локально) |
+Nexus поддерживает расширение функциональности через плагины. Плагины — это Python-файлы в `~/.nexus/plugins/`, содержащие функцию `setup()`.
+
+**Возможности плагинов:**
+- Регистрация собственных LLM-провайдеров
+- Регистрация собственных поисковых бэкендов
+- Добавление CLI-команд
+- Подписка на lifecycle-хуки (`pre_command`, `post_command`, `on_startup`, `on_shutdown`)
+
+```python
+# ~/.nexus/plugins/my_provider.py
+from nexus.core.providers import BaseProvider
+from nexus.core.plugin import register_provider
+
+class MyLLM(BaseProvider):
+    name = "my_llm"
+    # ... implement required methods ...
+
+def setup():
+    register_provider(MyLLM)
+```
+
+**Настройка через конфиг:**
+```bash
+nexus config edit          # Интерактивный редактор конфигурации
+```
+
+**Docker:**
+```bash
+docker build -t nexus:latest -f docker/Dockerfile .
+docker run --rm -it -v ~/.nexus:/root/.nexus -e GROQ_API_KEY=your_key nexus run "Hello"
+```
 
 Полная документация — в [docs/README.md](docs/README.md).
 
@@ -246,6 +332,8 @@ nexus mcp                       # запустить MCP-сервер (stdio)
 
 ### Компоненты
 
+- [docs/PLUGINS.md](docs/PLUGINS.md) — система плагинов (кастомные провайдеры, бэкенды, команды, хуки)
+- [docs/API.md](docs/API.md) — Python API для интеграции в свои приложения
 - [docs/MCP.md](docs/MCP.md) — MCP-сервер (интеграция с Claude Desktop, Cursor, Continue)
 - [docs/MEMORY.md](docs/MEMORY.md) — подключаемая память (JSON/SQLite бэкенды)
 - [docs/REACT.md](docs/REACT.md) — ReAct-агент (многошаговое рассуждение с инструментами)

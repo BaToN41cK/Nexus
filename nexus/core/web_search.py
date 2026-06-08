@@ -42,6 +42,9 @@ from nexus.core.config import WebSearchConfig
 
 logger = logging.getLogger(__name__)
 
+# Registry for custom search backends (populated by plugins).
+_custom_backends: Dict[str, type] = {}
+
 
 # ---------------------------------------------------------------------------
 # Data model

@@ -33,6 +33,16 @@ from nexus.core.banners import available_banners
 from nexus.core.logo import list_banners, print_logo
 from nexus.core.history import clear as clear_conversation
 from nexus.core.i18n import current_language, set_language, supported_languages, t
+from nexus.core.interactive_ui import (
+    COMMAND_DESCRIPTIONS,
+    UIConfig,
+    build_interactive_completer,
+    create_progress as _create_progress,
+    create_search_progress as _create_search_progress,
+    format_sources,
+    format_token_info,
+    load_ui_config,
+)
 from nexus.core.paths import (
     CACHE_DIR,
     HISTORY_LOG,
@@ -40,6 +50,7 @@ from nexus.core.paths import (
     SEARCH_CACHE_DIR,
     ensure_dirs,
 )
+from nexus.core.security import SensitiveDataFilter, mask_config_value
 from nexus.core.web_search import WebSearcher, load_config_from_yaml
 
 logger = logging.getLogger(__name__)
@@ -54,25 +65,11 @@ def _setup_logging(verbose: bool) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-def _build_interactive_completer():
-    try:
-        from prompt_toolkit.completion import WordCompleter
-    except ImportError:
-        return None
-    commands = [
-        "!search on",
-        "!search off",
-        "!search status",
-        "!lang ru",
-        "!lang en",
-        "!help",
-        "exit",
-        "quit",
-    ]
-    return WordCompleter(commands, ignore_case=True)
+# Apply sensitive data filter to the root logger
+logging.getLogger().addFilter(SensitiveDataFilter())
 
 
-def _build_prompt_session(history_path, completer):
+def _build_prompt_session(history_path, completer, ui_cfg: Optional[UIConfig] = None):
     from prompt_toolkit import PromptSession
     from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
     from prompt_toolkit.history import FileHistory
@@ -92,7 +89,12 @@ def cmd_interactive(args) -> None:
     # Показываем баннер при старте сессии (использует --banner / $NEXUS_BANNER)
     print_logo(console, banner=getattr(args, "banner", None))
     console.print(f"[dim]{t('cmd.interactive_exit_hint')}[/dim]\n")
-    console.print(f"[dim]{t('cmd.interactive_commands_hint')}[/dim]\n")
+
+    # Show available commands with descriptions
+    console.print("[bold cyan]📋 Available commands:[/bold cyan]")
+    for cmd, desc in list(COMMAND_DESCRIPTIONS.items())[:8]:
+        console.print(f"  [green]{cmd:<20}[/green] [dim]{desc}[/dim]")
+    console.print()
 
     config_path = getattr(args, "config", None)
     try:
@@ -101,6 +103,8 @@ def cmd_interactive(args) -> None:
         console.print(f"[red]{t('config.invalid', error=e)}[/red]")
         return
     web_config = load_config_from_yaml(config.to_dict())
+    # Load UI config
+    ui_cfg = load_ui_config(config.to_dict())
 
     cli_flag_search = getattr(args, "search", False)
     if cli_flag_search:
@@ -113,7 +117,8 @@ def cmd_interactive(args) -> None:
     web_searcher = None
     if search_enabled:
         try:
-            web_searcher = WebSearcher(web_config, SEARCH_CACHE_DIR)
+            with _create_search_progress(console):
+                web_searcher = WebSearcher(web_config, SEARCH_CACHE_DIR)
             console.print(
                 f"[blue]{t('search.toggle_on', backend=web_searcher.backend_name)}[/blue]"
             )
@@ -149,19 +154,23 @@ def cmd_interactive(args) -> None:
         messages.append({"role": "system", "content": config.system_prompt})
 
     history_path = os.path.join(NEXUS_DIR, "interactive_history")
-    completer = _build_interactive_completer()
+    # Load history words for dynamic autocomplete
+    history_words = []
+    if os.path.isfile(history_path):
+        try:
+            with open(history_path, "r") as f:
+                history_words = [line.strip() for line in f if line.strip()]
+        except Exception:
+            pass
+    completer = build_interactive_completer(history_words)
     session = None
     if completer is not None:
         try:
-            session = _build_prompt_session(history_path, completer)
+            session = _build_prompt_session(history_path, completer, ui_cfg)
         except Exception as e:
             logger.debug("prompt_toolkit init failed: %s", e)
 
     def _read():
-        # The translated prompt (e.g. "Вы: " / "You: ") is plain text.
-        # Don't wrap it in Rich markup — both ``session.prompt()`` (from
-        # prompt_toolkit) and ``console.input()`` would otherwise show
-        # the brackets literally.
         prompt_text = t("cmd.interactive_prompt")
         if session is not None:
             return session.prompt(prompt_text)
@@ -185,7 +194,8 @@ def cmd_interactive(args) -> None:
             if cmd_low in ("!search on", "!search on!"):
                 if web_searcher is None:
                     try:
-                        web_searcher = WebSearcher(web_config, SEARCH_CACHE_DIR)
+                        with _create_search_progress(console):
+                            web_searcher = WebSearcher(web_config, SEARCH_CACHE_DIR)
                     except Exception as e:
                         console.print(
                             f"[red]{t('search.toggle_failed', error=e)}[/red]"
@@ -228,7 +238,23 @@ def cmd_interactive(args) -> None:
                 )
                 continue
             if cmd_low in ("!help", "?"):
-                console.print(f"[dim]{t('cmd.interactive_commands_hint')}[/dim]")
+                console.print("[bold cyan]📋 Available commands:[/bold cyan]")
+                for cmd, desc in COMMAND_DESCRIPTIONS.items():
+                    console.print(f"  [green]{cmd:<20}[/green] [dim]{desc}[/dim]")
+                continue
+            if cmd_low in ("!clear", "!clear!"):
+                messages.clear()
+                if config.system_prompt:
+                    messages.append({"role": "system", "content": config.system_prompt})
+                console.print("[green]✓ Conversation history cleared.[/green]")
+                continue
+            if cmd_low in ("!status", "!status!"):
+                console.print(f"[cyan]Web search: {'ON' if search_enabled else 'OFF'}[/cyan]")
+                if search_enabled and web_searcher:
+                    console.print(f"[cyan]Backend: {web_searcher.backend_name}[/cyan]")
+                console.print(f"[cyan]Language: {current_language()}[/cyan]")
+                console.print(f"[cyan]Model: {config.groq_model} ({config.provider})[/cyan]")
+                console.print(f"[cyan]Messages in history: {len(messages)}[/cyan]")
                 continue
 
             messages.append({"role": "user", "content": user_input})
@@ -252,8 +278,8 @@ def cmd_interactive(args) -> None:
             with Live(
                 Panel(
                     Text("", style="green"),
-                    title="[green]Nexus[/green]",
-                    border_style="green",
+                    title=f"[{ui_cfg.panel_title_color}]Nexus[/{ui_cfg.panel_title_color}]",
+                    border_style=ui_cfg.panel_border_color,
                 ),
                 console=console,
                 refresh_per_second=10,
@@ -264,17 +290,12 @@ def cmd_interactive(args) -> None:
                         response_text += token
                         live.update(
                             Panel(
-                                Text(response_text + " ", style="green"),
-                                title="[green]Nexus[/green]",
-                                border_style="green",
+                                Text(response_text + " ", style=ui_cfg.assistant_color),
+                                title=f"[{ui_cfg.panel_title_color}]Nexus[/{ui_cfg.panel_title_color}]",
+                                border_style=ui_cfg.panel_border_color,
                             )
                         )
-                    try:
-                        gen.throw(StopIteration)
-                    except StopIteration:
-                        pass
                 except KeyboardInterrupt:
-                    # Allow graceful cancellation during streaming
                     console.print(f"\n[yellow]{t('cmd.interactive_interrupted')}[/yellow]")
                     continue
                 except Exception as e:
@@ -285,17 +306,9 @@ def cmd_interactive(args) -> None:
             response_text = response_text.strip()
             if response_text:
                 messages.append({"role": "assistant", "content": response_text})
-                # Persist the exchange to history log
                 _save_history(user_input, response_text, {})
             if sources:
-                src_text = "\n".join(f"- {u}" for u in sources)
-                console.print(
-                    Panel(
-                        Text(src_text, style="green"),
-                        title=f"[green]{t('web.sources_title')}[/green]",
-                        border_style="green",
-                    )
-                )
+                console.print(format_sources(sources))
 
     except KeyboardInterrupt:
         console.print(f"\n[yellow]{t('cmd.interactive_goodbye')}[/yellow]")
@@ -479,12 +492,10 @@ def cmd_debug(args) -> None:
         console.print(f"  [green]✅ Config loaded[/green]")
         config_dict = config.to_dict()
         for key, value in config_dict.items():
-            # Mask API keys in output
-            if "key" in key.lower() and value and len(str(value)) > 8:
-                masked = str(value)[:4] + "****" + str(value)[-4:]
-                console.print(f"    {key}: {masked}")
-            else:
-                console.print(f"    {key}: {value}")
+            # Mask any field whose name indicates a secret (api_key, token,
+            # secret, password, auth, etc.). mask_config_value handles the
+            # whole-token matching and value formatting.
+            console.print(f"    {key}: {mask_config_value(key, value)}")
     except Exception as e:
         console.print(f"  [red]❌ Config error: {e}[/red]")
         config = None
@@ -956,6 +967,17 @@ def build_parser():
         help=t("cmd.interactive_no_search"),
     )
 
+    # ``nexus config edit`` — interactive configuration editor.
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Edit configuration interactively",
+    )
+    config_sub = config_parser.add_subparsers(parser_class=_LocalizedSubparser, dest="config_action", help="Config subcommands")
+    config_edit_parser = config_sub.add_parser(
+        "edit",
+        help="Interactive configuration editor",
+    )
+
     search_parser = subparsers.add_parser("search", help=t("cmd.search_help"))
     search_parser.add_argument("query", type=str, help=t("cmd.search_query"))
     search_parser.add_argument(
@@ -1006,6 +1028,7 @@ COMMAND_MAP = {
     "run": cmd_run,
     "interactive": cmd_interactive,
     "search": cmd_web_search,
+    "config": None,  # handled via config_action in main()
     "history": cmd_history,
     "cache-clear": cmd_cache_clear,
     "status": cmd_status,
@@ -1085,6 +1108,13 @@ def main() -> None:
         sys.exit(2)
 
     handler = COMMAND_MAP.get(args.command)
+    if args.command == "config":
+        if hasattr(args, "config_action") and args.config_action == "edit":
+            from nexus.commands.config_edit import config_edit
+            config_edit(args)
+        else:
+            console.print("[yellow]Available config subcommands: edit[/yellow]")
+        return
     if handler:
         handler(args)
     else:

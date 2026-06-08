@@ -266,8 +266,26 @@ _URL_RE = re.compile(r"https?://[^\s,;'\"]+")
 
 
 def extract_urls(text: str) -> List[str]:
-    """Extract all HTTP/HTTPS URLs from a string."""
-    return list(set(_URL_RE.findall(text)))
+    """Extract all HTTP/HTTPS URLs from a string.
+
+    The regular expression ``_URL_RE`` captures URLs but may include trailing
+    punctuation such as ``!``, ``.`` or ``?`` when they appear directly after
+    the URL in natural language.  To provide clean URLs for downstream
+    processing we strip a set of common trailing punctuation characters.
+    """
+    raw_urls = _URL_RE.findall(text)
+    # Strip trailing punctuation that is not part of the URL.
+    cleaned = [url.rstrip('!.,?;:') for url in raw_urls]
+    # Return unique URLs while preserving deterministic order for testing.
+    # ``set`` would lose order, so we deduplicate while preserving the first
+    # occurrence order.
+    seen = set()
+    unique = []
+    for u in cleaned:
+        if u not in seen:
+            seen.add(u)
+            unique.append(u)
+    return unique
 
 
 # ---------------------------------------------------------------------------

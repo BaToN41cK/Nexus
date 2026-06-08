@@ -52,7 +52,80 @@
 - [TESTING.md](TESTING.md) — руководство по тестированию
 - [DEVELOPMENT.md](DEVELOPMENT.md) — настройка окружения разработчика
 
+### Расширение и интеграция
+
+- [PLUGINS.md](PLUGINS.md) — **система плагинов** (свои провайдеры, бэкенды, команды, хуки)
+- [API.md](API.md) — **Python API** для интеграции в свои приложения
+
 ---
+
+## 🧩 Система плагинов
+
+Nexus можно расширять **без форка** через плагины. Плагин — это Python-файл в `~/.nexus/plugins/`, содержащий функцию `setup()`.
+
+**Возможности плагинов:**
+
+- Регистрация **собственных LLM-провайдеров** (Llama.cpp, LM Studio, vLLM, ...)
+- Регистрация **собственных поисковых бэкендов** (Brave, Google CSE, Arxiv, ...)
+- Добавление **собственных CLI-команд**
+- Подписка на **lifecycle-хуки** (`pre_command`, `post_command`, `on_startup`, `on_shutdown`)
+
+```python
+# ~/.nexus/plugins/my_provider.py
+from nexus.core.providers import BaseProvider
+from nexus.core.plugin import register_provider
+
+
+class MyLLM(BaseProvider):
+    name = "my_llm"
+    # ... реализация методов generate / generate_stream ...
+
+
+def setup():
+    register_provider(MyLLM)
+```
+
+📖 Подробное руководство: [PLUGINS.md](PLUGINS.md)
+
+---
+
+## 🐍 Python API
+
+Nexus можно использовать **как Python-библиотеку** — без CLI. Это удобно для ботов, веб-сервисов, Jupyter-ноутбуков и CI/CD.
+
+```python
+import os
+from nexus import NexusAgent
+
+agent = NexusAgent(
+    api_key=os.getenv("GROQ_API_KEY"),
+    model="llama-3.3-70b-versatile",
+)
+print(agent.generate("Что такое Python?"))
+```
+
+Также доступны: `WebSearcher`, `ReActAgent`, `create_memory_store()`, `load_config()`, `discover_plugins()`.
+
+📖 Подробное руководство: [API.md](API.md)
+
+---
+
+## 🎨 Баннеры и темы
+
+Nexus поддерживает несколько ASCII-баннеров:
+
+```bash
+# Посмотреть все доступные баннеры
+nexus banner all
+
+# Посмотреть конкретный баннер
+nexus banner default
+
+# Использовать баннер для конкретного вызова
+nexus --banner cyberpunk run "Привет"
+```
+
+Также можно выбрать баннер через переменную окружения `NEXUS_BANNER`.
 
 ---
 
@@ -381,7 +454,100 @@ nexus cache-clear
 |--------------|-------------------------------------------|
 | `--verbose`  | Включить debug-логирование                |
 | `--config`   | Путь к YAML-конфигу (по умолчанию `~/.nexus/config.yaml`) |
-| `--lang`     | Язык интерфейса (`ru`, `en`)              |
+| `--lang`     | Язык интерфейса (`ru`, `en`, `es`, `de`, `fr`) |
+| `--banner`   | Имя ASCII-баннера для `--help` и интерактивного режима |
+
+### Команда `version`
+
+```bash
+nexus version
+```
+
+Печатает версию Nexus, Python и платформу.
+
+### Команда `update`
+
+```bash
+nexus update
+```
+
+Обновляет Nexus до последней версии через `pip install --upgrade nexus`. Показывает последние 5 строк вывода pip.
+
+### Команда `test`
+
+```bash
+nexus test
+```
+
+Запускает встроенный smoke-test: импортирует основные модули, проверяет наличие SQLite FTS5, систему переводов. Завершается с кодом 1 при ошибках.
+
+### Команда `debug`
+
+```bash
+nexus debug
+```
+
+Глубокая диагностика окружения:
+
+- Версия Python, платформа, путь к интерпретатору
+- Содержимое конфига (с замаскированными секретами)
+- Наличие и маскированное значение API-ключей
+- Установлены ли SDK всех провайдеров (`groq`, `openai`, `anthropic`, `ollama`)
+- Установлены ли вспомогательные библиотеки (`requests`, `beautifulsoup4`, `rich`, `pyyaml`, `pypdf`, ...)
+- Доступность SQLite FTS5
+
+### Команда `banner`
+
+```bash
+# Показать все баннеры
+nexus banner all
+
+# Показать конкретный баннер
+nexus banner default
+```
+
+Предпросмотр ASCII-баннеров Nexus. Доступные баннеры: `default`, `cyberpunk`, `minimal`, `compact` и др. Полный список — `nexus banner all`.
+
+### Команда `config edit`
+
+```bash
+nexus config edit
+```
+
+Открывает **интерактивный редактор** конфигурации `~/.nexus/config.yaml`. Позволяет пошагово изменить:
+
+- Провайдера (`provider`)
+- Модель (`groq_model`)
+- Параметры генерации (`temperature`, `max_tokens`, `timeout`)
+- Параметры web-поиска (`web_search.*`)
+- Кэш и лимиты
+
+### Команда `status` (расширенная)
+
+```bash
+nexus status
+```
+
+Помимо базовой информации о кэше и истории, показывает:
+
+- **Автоматическое определение провайдера** — таблицу всех доступных провайдеров с пометками о наличии SDK и API-ключа
+- **Лучший провайдер** — рекомендацию, основанную на доступных ключах
+- **Статистику использования** — количество запросов, токенов, оценку стоимости, top-5 моделей
+
+Пример вывода:
+```
+                      System Status
+┌──────────────────┬────────────────────────────────┐
+│ Component        │ Value                          │
+├──────────────────┼────────────────────────────────┤
+│ Cache entries    │ 12                             │
+│ Cache size       │ 234.5 KB                       │
+│ History file     │ yes                            │
+│ Nexus dir        │ C:\Users\you\.nexus            │
+└──────────────────┴────────────────────────────────┘
+
+  Best provider: groq   |   Best model: llama-3.3-70b-versatile
+```
 
 ### Команда `run`
 
@@ -603,14 +769,33 @@ nexus run "Привет"
 
 ### Поддерживаемые языки
 
-| Код | Язык |
-|-----|------|
-| `ru` | Русский |
-| `en` | English |
+| Код | Язык | Файл |
+|-----|------|------|
+| `ru` | Русский | `nexus/locale/ru.json` |
+| `en` | English | `nexus/locale/en.json` |
+| `es` | Español | `nexus/locale/es.json` |
+| `de` | Deutsch | `nexus/locale/de.json` |
+| `fr` | Français | `nexus/locale/fr.json` |
+| _любой_ | Динамическая регистрация | `nexus.core.i18n.add_language()` |
 
 ### Добавление нового языка
 
-Создайте файл `nexus/locale/<код>.json` на основе `nexus/locale/en.json` и добавьте код в `_SUPPORTED` в `nexus/core/i18n.py`.
+**Вариант 1 — Файл локали (рекомендуется):**
+1. Создайте `nexus/locale/<код>.json` на основе `nexus/locale/en.json`.
+2. Добавьте код в `_SUPPORTED` в `nexus/core/i18n.py`.
+
+**Вариант 2 — Динамически (плагины/скрипты):**
+```python
+from nexus.core.i18n import add_language
+add_language("it", {"cli.title": "Titolo", ...})
+```
+
+### Язык через переменную окружения
+
+```bash
+export NEXUS_LANG=es
+nexus run "Hola"
+```
 
 ---
 
@@ -678,46 +863,97 @@ nexus/
 ├── docker/
 │   └── Dockerfile                # Docker-образ для запуска Nexus
 ├── docs/
+│   ├── API.md                    # Python API (для интеграции)
+│   ├── ADVANCED_USAGE.md         # Продвинутое использование
+│   ├── ARCHITECTURE.md           # Архитектура
+│   ├── BEST_PRACTICES.md         # Лучшие практики
+│   ├── CHANGELOG.md              # История изменений
+│   ├── CLI_REFERENCE.md          # Справочник CLI
+│   ├── CONFIG_REFERENCE.md       # Справочник конфигурации
+│   ├── CONTRIBUTING.md           # Контрибуция
+│   ├── DEVELOPMENT.md            # Разработка
+│   ├── ENV_VARS.md               # Переменные окружения
+│   ├── EXAMPLES.md               # Примеры
+│   ├── FAQ.md                    # Частые вопросы
+│   ├── GLOSSARY.md               # Глоссарий
+│   ├── INSTALLATION.md           # Установка
+│   ├── INTEGRATIONS.md           # Интеграции
 │   ├── LICENSE                   # Лицензия
-│   ├── MCP.md                    # Документация MCP-сервера
-│   ├── MEMORY.md                 # Документация системы памяти
-│   ├── REACT.md                  # Документация ReAct-агента
+│   ├── MCP.md                    # MCP-сервер
+│   ├── MEMORY.md                 # Память
+│   ├── MIGRATION.md              # Миграция
+│   ├── PERFORMANCE.md            # Производительность
+│   ├── PLUGINS.md                # Система плагинов
+│   ├── REACT.md                  # ReAct-агент
+│   ├── ROADMAP.md                # Дорожная карта
+│   ├── SECURITY.md               # Безопасность
+│   ├── TESTING.md                # Тестирование
 │   └── README.md                 # Эта документация
 ├── nexus/
-│   ├── __init__.py               # Версия пакета
+│   ├── __init__.py               # Версия пакета + NexusAgent re-export
+│   ├── __main__.py               # Точка входа `python -m nexus`
 │   ├── cli.py                    # CLI-интерфейс (argparse)
 │   ├── mcp_server.py             # MCP-сервер (stdio)
 │   ├── commands/
 │   │   ├── __init__.py
-│   │   └── run.py                # Команда `run` (стриминг, кэш, история)
+│   │   ├── run.py                # Команда `run` (стриминг, кэш, история)
+│   │   └── config_edit.py        # Интерактивный редактор конфига
+│   ├── config/
+│   │   ├── .env.example
+│   │   └── nexus.yaml
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── agent.py              # Класс NexusAgent (мульти-провайдер)
+│   │   ├── agent.py              # NexusAgent (мульти-провайдер)
 │   │   ├── agent_react.py        # ReAct-агент (Reasoning + Acting)
+│   │   ├── autodetect.py         # Авто-определение лучшего провайдера
+│   │   ├── banners.py            # Реестр ASCII-баннеров
 │   │   ├── config.py             # Валидированная конфигурация (NexusConfig)
 │   │   ├── content_loader.py     # Загрузка контента из URL
-│   │   ├── history.py            # Обратная совместимость с историей диалога
-│   │   ├── i18n.py               # Интернационализация (ru/en)
+│   │   ├── error_parser.py       # Парсер ошибок провайдеров
+│   │   ├── history.py            # Обратная совместимость с историей
+│   │   ├── i18n.py               # Интернационализация (5 языков)
+│   │   ├── interactive_ui.py     # UI-конфиг, автодополнение, форматтеры
+│   │   ├── logo.py               # ASCII-логотип и баннеры
 │   │   ├── memory.py             # Подключаемые бэкенды памяти (JSON/SQLite)
-│   │   ├── paths.py              # Централизованные пути файловой системы
-│   │   ├── providers.py          # Адаптеры провайдеров (groq/openai/anthropic/ollama)
+│   │   ├── paths.py              # Централизованные пути
+│   │   ├── plugin.py             # Система плагинов
+│   │   ├── provider_factory.py   # Фабрика провайдеров
+│   │   ├── providers.py          # Адаптеры groq/openai/anthropic/ollama
+│   │   ├── security.py           # Маскирование секретов + SensitiveDataFilter
+│   │   ├── theme.py              # Цветовая тема UI
+│   │   ├── usage_stats.py        # Статистика использования (токены, стоимость)
 │   │   └── web_search.py         # Web-поиск (DDG/Tavily/SearXNG/Bing)
 │   └── locale/
+│       ├── de.json               # Немецкие переводы
 │       ├── en.json               # Английские переводы
+│       ├── es.json               # Испанские переводы
+│       ├── fr.json               # Французские переводы
 │       └── ru.json               # Русские переводы
 ├── scripts/
 │   ├── append_cli.py             # Скрипт добавления CLI-команд
 │   ├── install.ps1               # Установка для Windows
 │   └── install.sh                # Установка для Linux/macOS
 ├── tests/
+│   ├── test_agent.py             # Тесты NexusAgent
 │   ├── test_agent_react.py       # Тесты ReAct-агента
 │   ├── test_history.py           # Тесты истории диалога
+│   ├── test_i18n.py              # Тесты i18n
+│   ├── test_interactive_ui.py    # Тесты интерактивного UI
 │   ├── test_mcp_server.py        # Тесты MCP-сервера
 │   ├── test_memory.py            # Тесты подключаемой памяти
+│   ├── test_plugin.py            # Тесты системы плагинов
+│   ├── test_provider_factory.py  # Тесты фабрики провайдеров
+│   ├── test_providers.py         # Тесты провайдеров
+│   ├── test_run_command.py       # Тесты команды run
+│   ├── test_run_command_integration.py  # Интеграционные тесты run
+│   ├── test_security.py          # Тесты маскирования секретов
 │   └── test_web_search.py        # Тесты web-поиска
 ├── .pre-commit-config.yaml       # Pre-commit хуки
 ├── .gitignore
-└── requirements.txt              # Список зависимостей
+├── MANIFEST.in
+├── pyproject.toml                # Конфигурация пакета
+├── requirements.txt              # Список зависимостей
+└── README.md                     # Корневой README
 ```
 
 ---
