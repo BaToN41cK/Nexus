@@ -17,6 +17,16 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, List, Optional, Tuple
 
+from nexus.core.resilience import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    IdempotencyManager,
+    ResilienceConfig,
+    RetryConfig,
+    resilient_call,
+    retry_call,
+)
+
 logger = logging.getLogger(__name__)
 
 
