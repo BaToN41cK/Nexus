@@ -23,4 +23,14 @@ openpyxl
 # MCP server (optional — only needed for `nexus mcp` / IDE integration)
 # mcp
 
-
+# RAG (Retrieval-Augmented Generation) — hybrid search, BM25, MMR, embeddings
+# Uncomment the sections you need:
+# Basic RAG with local embeddings and FAISS vector store:
+# sentence-transformers
+# faiss-cpu
+# ChromaDB vector store (alternative to FAISS):
+# chromadb
+# OpenAI embeddings (alternative to sentence-transformers):
+# openai
+# Ollama embeddings (alternative to sentence-transformers):
+# ollama
