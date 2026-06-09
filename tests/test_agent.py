@@ -24,6 +24,8 @@ class TestNexusAgent(unittest.TestCase):
             "total_tokens": 2,
         }
         self.provider_mock.generate_stream.return_value = iter(["tok1", "tok2"])
+        # Mark responses as non-error so fallback chain is not triggered.
+        self.provider_mock._is_error_response.return_value = False
 
         patcher = patch("nexus.core.agent.create_provider", return_value=self.provider_mock)
         self.addCleanup(patcher.stop)
@@ -121,6 +123,10 @@ class TestNexusAgent(unittest.TestCase):
     def test_generate_stream_with_system_and_history(self):
         history = [{"role": "assistant", "content": "prev"}]
         gen = self.agent.generate_stream(prompt="st", system_prompt="sys", history=history)
+        # Consume the generator to trigger the actual provider call.
+        tokens = list(gen)
+        self.assertEqual(tokens, ["tok1", "tok2"])
+        # Now verify the provider was called with correct messages.
         args, kwargs = self.provider_mock.generate_stream.call_args
         messages = args[0]
         self.assertEqual(len(messages), 3)
