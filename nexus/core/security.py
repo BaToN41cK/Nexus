@@ -82,7 +82,7 @@ class SensitiveDataFilter(logging.Filter):
         return True
 
 
-def mask_api_key(key: str, visible_chars: int = 4) -> str:  
+def mask_api_key(key: str, visible_chars: int = 4) -> str:
     """Mask an API key showing only the first and last *visible_chars* chars.
 
     Args:

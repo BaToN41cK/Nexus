@@ -47,16 +47,16 @@ logging.getLogger("nexus.core.agent").setLevel(logging.WARNING)
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-
-NEXUS_DIR = os.path.join(os.path.expanduser("~"), ".nexus")
-CACHE_DIR = os.path.join(NEXUS_DIR, "cache")
-HISTORY_DIR = os.path.join(NEXUS_DIR, "history")
-SEARCH_CACHE_DIR = os.path.join(NEXUS_DIR, "search_cache")
-DEFAULT_CONFIG_PATH = os.path.join(NEXUS_DIR, "config.yaml")
-
-os.makedirs(CACHE_DIR, exist_ok=True)
-os.makedirs(HISTORY_DIR, exist_ok=True)
-os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
+# Imported from the centralised `nexus.core.paths` module to keep a single
+# source of truth and avoid side effects at import time.
+from nexus.core.paths import (  # noqa: F401  (re-exported for back-compat)
+    CACHE_DIR,
+    DEFAULT_CONFIG_PATH,
+    HISTORY_DIR,
+    NEXUS_DIR,
+    SEARCH_CACHE_DIR,
+    ensure_dirs,
+)
 
 
 def _load_config(config_path: Optional[str] = None) -> dict:

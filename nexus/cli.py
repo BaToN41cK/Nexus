@@ -65,8 +65,9 @@ def _setup_logging(verbose: bool) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-# Apply sensitive data filter to the root logger
-logging.getLogger().addFilter(SensitiveDataFilter())
+    root_logger = logging.getLogger()
+    if not any(isinstance(filter_, SensitiveDataFilter) for filter_ in root_logger.filters):
+        root_logger.addFilter(SensitiveDataFilter())
 
 
 def _build_prompt_session(history_path, completer, ui_cfg: Optional[UIConfig] = None):
@@ -913,6 +914,11 @@ def build_parser():
     )
     parser.add_argument("--verbose", action="store_true", help=t("cli.verbose"))
     parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Show Nexus version and exit",
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default=DEFAULT_CONFIG_PATH,
@@ -1082,7 +1088,22 @@ def main() -> None:
         sys.exit(0)
 
     args = parser.parse_args()
+
+    # Top-level --version shortcut: ``nexus --version`` without a subcommand.
+    if getattr(args, "version", False):
+        from nexus import __version__ as _ver
+
+        console.print(f"[bold]Nexus[/bold] v{_ver}")
+        console.print(f"Python {sys.version.split()[0]}")
+        return
+
     _setup_logging(args.verbose)
+    # Mask API keys / secrets in all log records (only after the logger
+    # has been configured — otherwise our filter is attached to a
+    # brand-new logger that will be replaced by ``basicConfig`` below).
+    from nexus.core.security import SensitiveDataFilter
+
+    logging.getLogger().addFilter(SensitiveDataFilter())
     ensure_dirs()
 
     # ``--lang`` was already honoured above; nothing else to do here.

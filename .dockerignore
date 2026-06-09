@@ -1,0 +1,59 @@
+# .dockerignore — exclude everything not needed for the runtime image
+# Dramatically reduces build context size and speeds up `docker build`.
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# CI / workflows
+.github
+.pre-commit-config.yaml
+
+# Tests & dev artifacts
+tests/
+tests/**
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+env/
+
+# Documentation (not needed at runtime)
+docs/
+*.md
+!README.md
+LICENSE
+CHANGELOG.md
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Local config & secrets
+.env
+.env.*
+config/.env
+nexus/local/
+*.log

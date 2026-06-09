@@ -41,6 +41,7 @@
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — полный справочник конфигурации
 - [CLI_REFERENCE.md](CLI_REFERENCE.md) — справочник всех команд и флагов CLI
 - [FAQ.md](FAQ.md) — частые вопросы
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — 10 самых частых ошибок и их решения
 - [PERFORMANCE.md](PERFORMANCE.md) — тюнинг производительности
 - [ADVANCED_USAGE.md](ADVANCED_USAGE.md) — продвинутое использование: кастомные провайдеры, инструменты, пайплайны
 - [MIGRATION.md](MIGRATION.md) — миграция между версиями

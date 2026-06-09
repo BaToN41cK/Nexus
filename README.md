@@ -1,8 +1,13 @@
-# Nexus — ИИ-ассистент
+﻿# Nexus — ИИ-ассистент
 
 [![Build Status](https://github.com/BaToN41cK/Nexus/actions/workflows/ci.yml/badge.svg)](https://github.com/BaToN41cK/Nexus/actions)
 [![Coverage Status](https://coveralls.io/repos/github/BaToN41cK/Nexus/badge.svg?branch=main)](https://coveralls.io/github/BaToN41cK/Nexus?branch=main)
 [![PyPI version](https://badge.fury.io/py/nexus.svg)](https://pypi.org/project/nexus/)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Types: mypy](https://img.shields.io/badge/types-mypy-blue.svg)](http://mypy-lang.org/)
+[![Maintenance](https://img.shields.io/badge/maintained-yes-brightgreen.svg)](https://github.com/BaToN41cK/Nexus/graphs/commit-activity)
 
 ## Установка
 
@@ -162,7 +167,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 И выбрать провайдера в `~/.nexus/config.yaml`:
 ```yaml
 provider: "openai"   # groq | openai | anthropic | ollama
-groq_model: "gpt-4o-mini"   # используется как «основная модель» для всех провайдеров
+openai_model: "gpt-4o-mini"   # model of the selected provider (groq_model / openai_model / anthropic_model / ollama_model)
 ```
 
 ---
