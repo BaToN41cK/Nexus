@@ -1262,25 +1262,25 @@ def build_parser():
     # `nexus doctor` — run diagnostics and health checks.
     subparsers.add_parser(
         "doctor",
-        help="Run system diagnostics and health checks",
+        help=t("cmd.doctor_help"),
     )
 
     # `nexus rag <subcommand>` — RAG commands.
     rag_parser = subparsers.add_parser(
         "rag",
-        help="RAG (Retrieval-Augmented Generation) operations",
+        help=t("cmd.rag_help"),
     )
-    rag_sub = rag_parser.add_subparsers(parser_class=_LocalizedSubparser, dest="rag_action", help="RAG subcommands")
+    rag_sub = rag_parser.add_subparsers(parser_class=_LocalizedSubparser, dest="rag_action", help=t("cmd.rag_subcommands"))
 
-    rag_query_parser = rag_sub.add_parser("query", help="Query indexed documents")
-    rag_query_parser.add_argument("query", type=str, help="Search query text")
+    rag_query_parser = rag_sub.add_parser("query", help=t("cmd.rag_query_help"))
+    rag_query_parser.add_argument("query", type=str, help=t("cmd.rag_query_arg"))
 
-    rag_add_parser = rag_sub.add_parser("add", help="Index a file or directory")
-    rag_add_parser.add_argument("path", type=str, help="File or directory path")
-    rag_add_parser.add_argument("--pattern", type=str, default="*.md", help="Glob pattern for directory indexing (default: *.md)")
+    rag_add_parser = rag_sub.add_parser("add", help=t("cmd.rag_add_help"))
+    rag_add_parser.add_argument("path", type=str, help=t("cmd.rag_add_arg"))
+    rag_add_parser.add_argument("--pattern", type=str, default="*.md", help=t("cmd.rag_add_pattern"))
 
-    rag_sub.add_parser("list", help="List indexed sources and stats")
-    rag_sub.add_parser("clear", help="Clear all indexed documents")
+    rag_sub.add_parser("list", help=t("cmd.rag_list_help"))
+    rag_sub.add_parser("clear", help=t("cmd.rag_clear_help"))
 
     return parser
 

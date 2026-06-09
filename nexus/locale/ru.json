@@ -164,5 +164,17 @@
 
   "lang.switched": "Язык переключён на: {lang}",
   "lang.invalid": "Неизвестный язык: {lang}. Поддерживаются: {supported}",
-  "lang.current": "Текущий язык: {lang}"
+  "lang.current": "Текущий язык: {lang}",
+
+  "cmd.mcp_help": "Запустить MCP-сервер Nexus (stdio). Для Claude Desktop / Cursor.",
+  "cmd.doctor_help": "Диагностика системы и проверка работоспособности",
+  "cmd.rag_help": "RAG — поиск по проиндексированным документам",
+  "cmd.rag_subcommands": "Подкоманды RAG",
+  "cmd.rag_query_help": "Найти информацию по вопросу",
+  "cmd.rag_query_arg": "Текст вопроса",
+  "cmd.rag_add_help": "Проиндексировать файл или папку",
+  "cmd.rag_add_arg": "Путь к файлу или папке",
+  "cmd.rag_add_pattern": "Glob-шаблон для папки (по умолчанию: *.md)",
+  "cmd.rag_list_help": "Показать список источников и статистику",
+  "cmd.rag_clear_help": "Очистить все проиндексированные документы"
 }
