@@ -82,6 +82,16 @@ class UsageStats:
     # --- Error breakdown ---
     error_types: Dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
+    # --- Resilience metrics ---
+    circuit_breaker_trips: int = 0
+    fallback_count: int = 0
+    retry_count: int = 0
+    idempotency_hits: int = 0
+
+    # --- RAG metrics ---
+    rag_queries: int = 0
+    rag_docs_indexed: int = 0
+
     # --- Session tracking ---
     first_used: str = ""
     last_used: str = ""

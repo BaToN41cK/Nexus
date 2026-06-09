@@ -580,6 +580,238 @@ def cmd_banner(args) -> None:
     print_logo(console, banner=name)
 
 
+def cmd_rag(args) -> None:
+    """
+    RAG (Retrieval-Augmented Generation) commands.
+
+    Subcommands:
+      query <text>    — Ask a question over indexed documents
+      add <path>      — Index a file or directory
+      list            — Show indexed sources and stats
+      clear           — Remove all indexed documents
+    """
+    from nexus.core.config import load_config, ConfigError
+    from nexus.core.rag import RAGEngine, RAGConfig, ChunkConfig
+
+    action = getattr(args, "rag_action", None)
+    config_path = getattr(args, "config", None)
+
+    try:
+        cfg = load_config(config_path)
+    except ConfigError as e:
+        console.print(f"[red]{t('config.invalid', error=e)}[/red]")
+        return
+
+    rag_cfg = cfg.rag
+    if not rag_cfg.enabled:
+        console.print("[yellow]RAG is disabled in config. Set rag.enabled: true in nexus.yaml[/yellow]")
+        return
+
+    # Build RAG engine config.
+    engine_cfg = RAGConfig(
+        embedding_backend=rag_cfg.embedding_backend,
+        embedding_kwargs={"model_name": rag_cfg.embedding_model} if rag_cfg.embedding_backend == "sentence-transformers" else {},
+        vector_store_backend=rag_cfg.vector_store_backend,
+        vector_store_kwargs={"dimension": 384},
+        chunk_config=ChunkConfig(chunk_size=rag_cfg.chunk_size, chunk_overlap=rag_cfg.chunk_overlap),
+        top_k_initial=rag_cfg.top_k_initial,
+        top_k_after_rerank=rag_cfg.top_k_after_rerank,
+        use_bm25=rag_cfg.use_bm25,
+        use_mmr=rag_cfg.use_mmr,
+    )
+
+    # Create persistent engine.
+    import os
+    index_path = os.path.expanduser(rag_cfg.index_path) if "~" in rag_cfg.index_path else rag_cfg.index_path
+    engine = RAGEngine.create_persistent(config=engine_cfg, index_path=index_path)
+
+    if action == "query":
+        query = getattr(args, "query", "")
+        if not query:
+            console.print("[yellow]Usage: nexus rag query <text>[/yellow]")
+            return
+
+        console.print(f"[cyan]🔍 Searching over {engine.doc_count} indexed chunks...[/cyan]\n")
+        results = engine.retrieve(query, top_k=rag_cfg.top_k_after_rerank)
+
+        if not results:
+            console.print("[yellow]No relevant documents found.[/yellow]")
+            return
+
+        for i, r in enumerate(results, 1):
+            src = r.document.metadata.get("source", "unknown")
+            score = r.score
+            preview = r.document.text[:300] + "..." if len(r.document.text) > 300 else r.document.text
+            console.print(f"[bold cyan][{i}] Source: {src}[/bold cyan] [dim](score: {score:.4f})[/dim]")
+            console.print(f"  {preview}")
+            console.print()
+
+        # Record RAG query metric.
+        try:
+            from nexus.core.usage_stats import get_global_stats
+            stats = get_global_stats()
+            stats.rag_queries += 1
+            stats.save()
+        except Exception:
+            pass
+
+    elif action == "add":
+        path = getattr(args, "path", "")
+        if not path:
+            console.print("[yellow]Usage: nexus rag add <file_or_directory>[/yellow]")
+            return
+
+        import os as _os
+        if _os.path.isdir(path):
+            pattern = getattr(args, "pattern", "*.md")
+            with console.status(f"[blue]Indexing directory {path}...[/blue]"):
+                count = engine.index_directory(path, pattern=pattern)
+            console.print(f"[green]✅ Indexed {count} chunks from {path}[/green]")
+        elif _os.path.isfile(path):
+            with console.status(f"[blue]Indexing file {path}...[/blue]"):
+                count = engine.index_file(path)
+            console.print(f"[green]✅ Indexed {count} chunks from {path}[/green]")
+        else:
+            console.print(f"[red]Path not found: {path}[/red]")
+            return
+
+        # Record RAG metric.
+        try:
+            from nexus.core.usage_stats import get_global_stats
+            stats = get_global_stats()
+            stats.rag_docs_indexed += count
+            stats.save()
+        except Exception:
+            pass
+
+    elif action in ("list", "stats"):
+        stats = engine.get_stats()
+        console.print("[bold cyan]📊 RAG Statistics[/bold cyan]")
+        console.print(f"  [green]Indexed chunks:[/green] {stats['doc_count']}")
+        console.print(f"  [green]Sources:[/green] {len(stats['sources'])}")
+        console.print(f"  [green]Persistence:[/green] {'✅' if stats['has_persistence'] else '❌'}")
+        if stats['persist_path']:
+            console.print(f"  [dim]Index path: {stats['persist_path']}[/dim]")
+        if stats['sources']:
+            console.print(f"\n  [bold cyan]Sources:[/bold cyan]")
+            for src in sorted(stats['sources'])[:20]:
+                console.print(f"    • {src}")
+            if len(stats['sources']) > 20:
+                console.print(f"    ... and {len(stats['sources']) - 20} more")
+
+    elif action == "clear":
+        engine.clear()
+        console.print("[green]✅ RAG index cleared[/green]")
+
+    else:
+        console.print("[yellow]Available rag subcommands: query, add, list, clear[/yellow]")
+
+
+def cmd_doctor(args) -> None:
+    """Run diagnostics and health checks for all Nexus systems."""
+    # We re-use the existing debug infrastructure.
+    from nexus import __version__
+    from nexus.core.config import load_config, ConfigError
+
+    console.print(f"\n[bold]Nexus Doctor — v{__version__}[/bold]\n")
+    passed = 0
+    failed = 0
+
+    # 1. Config check
+    console.print("[bold cyan]📋 Configuration[/bold cyan]")
+    try:
+        config = load_config()
+        console.print(f"  [green]✅ Config loaded ({config.provider}/{config.groq_model})[/green]")
+        passed += 1
+    except ConfigError as e:
+        console.print(f"  [red]❌ Config error: {e}[/red]")
+        failed += 1
+
+    # 2. API keys
+    console.print("\n[bold cyan]🔑 API Keys[/bold cyan]")
+    import os
+    key_map = {"GROQ_API_KEY": "groq", "OPENAI_API_KEY": "openai",
+               "ANTHROPIC_API_KEY": "anthropic"}
+    for env_var, prov in key_map.items():
+        val = os.getenv(env_var, "")
+        if val:
+            masked = val[:4] + "****" + val[-4:] if len(val) > 8 else "****"
+            console.print(f"  [green]✅ {prov}: {env_var} = {masked}[/green]")
+            passed += 1
+        else:
+            console.print(f"  [yellow]⚠️  {prov}: {env_var} not set (optional)[/yellow]")
+    console.print(f"  [green]✅ ollama: local (no key needed)[/green]")
+    passed += 1
+
+    # 3. Provider SDKs
+    console.print("\n[bold cyan]📦 Provider SDKs[/bold cyan]")
+    for sdk_name, label in [("groq", "Groq"), ("openai", "OpenAI"),
+                             ("anthropic", "Anthropic"), ("ollama", "Ollama")]:
+        try:
+            mod = __import__(sdk_name)
+            ver = getattr(mod, "__version__", "installed")
+            console.print(f"  [green]✅ {label}: {ver}[/green]")
+            passed += 1
+        except ImportError:
+            console.print(f"  [yellow]⚠️  {label}: not installed (optional)[/yellow]")
+
+    # 4. RAG dependencies
+    console.print("\n[bold cyan]🧠 RAG Dependencies[/bold cyan]")
+    for pkg, label in [("faiss", "FAISS"), ("sentence_transformers", "sentence-transformers")]:
+        try:
+            __import__(pkg)
+            console.print(f"  [green]✅ {label}[/green]")
+            passed += 1
+        except ImportError:
+            console.print(f"  [yellow]⚠️  {label}: not installed (optional)[/yellow]")
+
+    # 5. Resilience
+    console.print("\n[bold cyan]🔄 Resilience (Circuit Breaker)[/bold cyan]")
+    try:
+        from nexus.core.resilience import CircuitBreaker, CircuitBreakerConfig
+        cb = CircuitBreaker()
+        console.print(f"  [green]✅ CircuitBreaker state: {cb.state.name}[/green]")
+        passed += 1
+    except Exception as e:
+        console.print(f"  [red]❌ CircuitBreaker error: {e}[/red]")
+        failed += 1
+
+    # 6. Fallback chain detection
+    console.print(f"\n[bold cyan]🔁 Fallback Providers[/bold cyan]")
+    try:
+        from nexus.core.agent import _detect_available_providers
+        available = _detect_available_providers()
+        for entry in available:
+            console.print(f"  [green]✅ {entry['provider']}/{entry['model']}[/green]")
+        if not available:
+            console.print(f"  [yellow]⚠️  No fallback providers detected[/yellow]")
+        passed += 1
+    except Exception as e:
+        console.print(f"  [red]❌ Fallback detection error: {e}[/red]")
+        failed += 1
+
+    # 7. FTS5
+    console.print(f"\n[bold cyan]🗄️ SQLite FTS5[/bold cyan]")
+    try:
+        import sqlite3 as _sql
+        conn = _sql.connect(":memory:")
+        conn.execute("CREATE VIRTUAL TABLE _probe USING fts5(x)")
+        conn.execute("DROP TABLE _probe")
+        conn.close()
+        console.print(f"  [green]✅ FTS5 available[/green]")
+        passed += 1
+    except Exception:
+        console.print(f"  [yellow]⚠️  FTS5 not available (FTS5 needed for full-text search)[/yellow]")
+
+    # Summary
+    total = passed + failed
+    console.print(f"\n[bold]Result: {passed}/{total} checks passed[/bold]")
+    if failed:
+        console.print(f"[yellow]⚠️  {failed} check(s) failed or not applicable[/yellow]")
+        # Don't exit with error — doctor is informational
+    console.print()
+
+
 def cmd_status(args) -> None:
     ensure_dirs()
 
@@ -1027,6 +1259,29 @@ def build_parser():
         help=t("cmd.mcp_help"),
     )
 
+    # `nexus doctor` — run diagnostics and health checks.
+    subparsers.add_parser(
+        "doctor",
+        help="Run system diagnostics and health checks",
+    )
+
+    # `nexus rag <subcommand>` — RAG commands.
+    rag_parser = subparsers.add_parser(
+        "rag",
+        help="RAG (Retrieval-Augmented Generation) operations",
+    )
+    rag_sub = rag_parser.add_subparsers(parser_class=_LocalizedSubparser, dest="rag_action", help="RAG subcommands")
+
+    rag_query_parser = rag_sub.add_parser("query", help="Query indexed documents")
+    rag_query_parser.add_argument("query", type=str, help="Search query text")
+
+    rag_add_parser = rag_sub.add_parser("add", help="Index a file or directory")
+    rag_add_parser.add_argument("path", type=str, help="File or directory path")
+    rag_add_parser.add_argument("--pattern", type=str, default="*.md", help="Glob pattern for directory indexing (default: *.md)")
+
+    rag_sub.add_parser("list", help="List indexed sources and stats")
+    rag_sub.add_parser("clear", help="Clear all indexed documents")
+
     return parser
 
 
@@ -1044,6 +1299,8 @@ COMMAND_MAP = {
     "debug": cmd_debug,
     "banner": cmd_banner,
     "mcp": cmd_mcp,
+    "rag": cmd_rag,
+    "doctor": cmd_doctor,
 }
 
 

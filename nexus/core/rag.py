@@ -28,8 +28,10 @@ Usage::
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from nexus.core.embeddings import (
@@ -254,6 +256,7 @@ class RAGEngine:
                 self.bm25.add_documents(batch)
 
         self._documents.extend(documents)
+        self._maybe_persist()
         logger.info(
             "Indexed %d chunks from %d texts",
             len(documents),
@@ -286,6 +289,7 @@ class RAGEngine:
                 self.bm25.add_documents(batch)
 
         self._documents.extend(documents)
+        self._maybe_persist()
         logger.info("Indexed %d documents", len(documents))
         return len(documents)
 
@@ -441,7 +445,190 @@ class RAGEngine:
             scores=scores,
         )
 
-    # -- persistence --
+    # -- file indexing --
+
+    def index_file(self, file_path: str) -> int:
+        """
+        Index a single file by reading its contents.
+
+        Supports: .txt, .md, .rst, .py, .json, .yaml, .yml, .csv,
+        and via existing Nexus loaders: .pdf, .docx, .pptx, .xlsx.
+
+        Args:
+            file_path: Path to the file.
+
+        Returns:
+            Number of chunks indexed, or 0 if file cannot be read.
+        """
+        path = Path(file_path)
+        if not path.exists():
+            logger.warning("File not found: %s", file_path)
+            return 0
+
+        text = self._read_file(path)
+        if not text:
+            return 0
+
+        metadata: Dict[str, Any] = {"source": str(path), "filename": path.name}
+        return self.index_texts([(text, metadata)])
+
+    def index_directory(
+        self,
+        dir_path: str,
+        pattern: str = "*.md",
+        recursive: bool = True,
+    ) -> int:
+        """
+        Index all files matching a glob pattern in a directory.
+
+        Args:
+            dir_path: Directory to scan.
+            pattern: Glob pattern (e.g. ``"*.md"``, ``"*.txt"``, ``"**/*.py"``).
+            recursive: Whether to scan subdirectories.
+
+        Returns:
+            Total number of chunks indexed.
+        """
+        base = Path(dir_path)
+        if not base.is_dir():
+            logger.warning("Directory not found: %s", dir_path)
+            return 0
+
+        if recursive and not pattern.startswith("**/"):
+            pattern = f"**/{pattern}"
+
+        total = 0
+        files = list(base.glob(pattern))
+        for fpath in files:
+            if fpath.is_file():
+                count = self.index_file(str(fpath))
+                total += count
+
+        logger.info("Indexed %d chunks from %d files in %s", total, len(files), dir_path)
+        return total
+
+    @staticmethod
+    def _read_file(path: Path) -> str:
+        """Read text content from a file. Supports various formats."""
+        import json as _json
+
+        suffix = path.suffix.lower()
+
+        # Plain text formats.
+        if suffix in (".txt", ".md", ".rst", ".py", ".js", ".ts", ".html", ".css",
+                      ".json", ".yaml", ".yml", ".csv", ".xml", ".ini", ".cfg",
+                      ".toml", ".env", ".sh", ".bat", ".ps1"):
+            try:
+                return path.read_text(encoding="utf-8", errors="replace")
+            except Exception as e:
+                logger.warning("Failed to read %s: %s", path, e)
+                return ""
+
+        # PDF — use existing pypdf loader.
+        if suffix == ".pdf":
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(str(path))
+                return "\n".join(page.extract_text() for page in reader.pages)
+            except Exception as e:
+                logger.warning("Failed to read PDF %s: %s", path, e)
+                return ""
+
+        # DOCX — use existing python-docx.
+        if suffix == ".docx":
+            try:
+                from docx import Document as DocxDocument
+                doc = DocxDocument(str(path))
+                return "\n".join(p.text for p in doc.paragraphs)
+            except Exception as e:
+                logger.warning("Failed to read DOCX %s: %s", path, e)
+                return ""
+
+        # PPTX — use existing python-pptx.
+        if suffix == ".pptx":
+            try:
+                from pptx import Presentation
+                prs = Presentation(str(path))
+                texts: List[str] = []
+                for slide in prs.slides:
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text"):
+                            texts.append(shape.text)
+                return "\n".join(texts)
+            except Exception as e:
+                logger.warning("Failed to read PPTX %s: %s", path, e)
+                return ""
+
+        # XLSX — use existing openpyxl.
+        if suffix == ".xlsx":
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(str(path), read_only=True, data_only=True)
+                texts: List[str] = []
+                for sheet in wb.sheetnames:
+                    ws = wb[sheet]
+                    for row in ws.iter_rows(values_only=True):
+                        row_text = " | ".join(str(c) for c in row if c is not None)
+                        if row_text.strip():
+                            texts.append(row_text)
+                return "\n".join(texts)
+            except Exception as e:
+                logger.warning("Failed to read XLSX %s: %s", path, e)
+                return ""
+
+        logger.warning("Unsupported file type: %s", suffix)
+        return ""
+
+    # -- persistence with auto load/save --
+
+    DEFAULT_INDEX_DIR = os.path.join("~", ".nexus", "rag")
+
+    @classmethod
+    def create_persistent(
+        cls,
+        config: Optional["RAGConfig"] = None,
+        index_path: Optional[str] = None,
+    ) -> "RAGEngine":
+        """
+        Create a RAG engine that automatically loads a previously saved
+        index from disk (if it exists) and will save on every index operation.
+
+        Args:
+            config: RAG configuration.
+            index_path: Path to the FAISS index file. Defaults to
+                        ``~/.nexus/rag/index.faiss``.
+
+        Returns:
+            A configured RAGEngine instance with persistence enabled.
+        """
+        engine = cls(config=config)
+        path = index_path or os.path.join(
+            os.path.expanduser(cls.DEFAULT_INDEX_DIR), "index.faiss"
+        )
+        engine._persist_path = path
+
+        # Auto-load if index exists.
+        faiss_path = path
+        meta_path = path + ".meta.json"
+        if os.path.isfile(faiss_path) and os.path.isfile(meta_path):
+            try:
+                engine.load(faiss_path)
+                logger.info("Loaded persisted RAG index from %s (%d docs)", path, engine.doc_count)
+            except Exception as e:
+                logger.warning("Failed to load RAG index from %s: %s", path, e)
+
+        return engine
+
+    def _maybe_persist(self) -> None:
+        """Auto-save after indexing if persistence is enabled."""
+        persist_path = getattr(self, "_persist_path", None)
+        if persist_path:
+            try:
+                os.makedirs(os.path.dirname(persist_path), exist_ok=True)
+                self.save(persist_path)
+                logger.debug("Auto-saved RAG index to %s (%d docs)", persist_path, self.doc_count)
+            except Exception as e:
+                logger.warning("Failed to auto-save RAG index: %s", e)
 
     def save(self, path: str) -> None:
         """Persist the vector store and config to disk."""
@@ -458,8 +645,30 @@ class RAGEngine:
         if self._bm25 is not None:
             self._bm25.clear()
         logger.info("RAG engine cleared")
+        # Remove persisted files.
+        persist_path = getattr(self, "_persist_path", None)
+        if persist_path:
+            for suffix in ("", ".meta.json"):
+                fpath = persist_path + suffix
+                if os.path.isfile(fpath):
+                    try:
+                        os.remove(fpath)
+                    except OSError:
+                        pass
 
     @property
     def doc_count(self) -> int:
         """Return the total number of indexed documents/chunks."""
         return self.vector_store.count()
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Return statistics about the indexed documents."""
+        return {
+            "doc_count": self.doc_count,
+            "sources": list(set(
+                d.metadata.get("source", "unknown")
+                for d in self._documents
+            )),
+            "has_persistence": hasattr(self, "_persist_path") and bool(self._persist_path),
+            "persist_path": getattr(self, "_persist_path", None),
+        }

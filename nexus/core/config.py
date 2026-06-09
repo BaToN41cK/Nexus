@@ -38,6 +38,8 @@ class ConfigError(ValueError):
 
 VALID_PROVIDERS: List[str] = ["groq", "openai", "anthropic", "ollama"]
 VALID_BACKENDS: List[str] = ["auto", "duckduckgo", "tavily", "searxng", "bing"]
+VALID_EMBEDDING_BACKENDS: List[str] = ["sentence-transformers", "openai", "ollama"]
+VALID_VECTOR_STORE_BACKENDS: List[str] = ["faiss", "chroma"]
 
 # Default model for each provider — used for auto-detection when the
 # provider changes but the model is still the default from another one.
@@ -52,6 +54,131 @@ _DEFAULT_MODEL_BY_PROVIDER: Dict[str, str] = {
 # ---------------------------------------------------------------------------
 # Dataclass
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class RAGConfig:
+    """Configuration for RAG (Retrieval-Augmented Generation)."""
+
+    enabled: bool = False
+    embedding_backend: str = "sentence-transformers"
+    embedding_model: str = "all-MiniLM-L6-v2"
+    vector_store_backend: str = "faiss"
+    index_path: str = "~/.nexus/rag/index.faiss"
+    chunk_size: int = 512
+    chunk_overlap: int = 64
+    top_k_initial: int = 20
+    top_k_after_rerank: int = 5
+    use_bm25: bool = True
+    use_mmr: bool = True
+    use_cross_encoder: bool = False
+
+    def __post_init__(self) -> None:
+        if self.embedding_backend not in VALID_EMBEDDING_BACKENDS:
+            raise ConfigError(
+                f"rag.embedding_backend must be one of {VALID_EMBEDDING_BACKENDS}, "
+                f"got: {self.embedding_backend!r}"
+            )
+        if self.vector_store_backend not in VALID_VECTOR_STORE_BACKENDS:
+            raise ConfigError(
+                f"rag.vector_store_backend must be one of {VALID_VECTOR_STORE_BACKENDS}, "
+                f"got: {self.vector_store_backend!r}"
+            )
+        if not (1 <= int(self.chunk_size) <= 10000):
+            raise ConfigError(f"rag.chunk_size must be between 1 and 10000, got: {self.chunk_size!r}")
+        if not (0 <= int(self.chunk_overlap) < int(self.chunk_size)):
+            raise ConfigError(
+                f"rag.chunk_overlap must be between 0 and chunk_size, "
+                f"got: {self.chunk_overlap!r}"
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "embedding_backend": self.embedding_backend,
+            "embedding_model": self.embedding_model,
+            "vector_store_backend": self.vector_store_backend,
+            "index_path": self.index_path,
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "top_k_initial": self.top_k_initial,
+            "top_k_after_rerank": self.top_k_after_rerank,
+            "use_bm25": self.use_bm25,
+            "use_mmr": self.use_mmr,
+            "use_cross_encoder": self.use_cross_encoder,
+        }
+
+
+@dataclass
+class CircuitBreakerConfig:
+    """Configuration for circuit breaker."""
+
+    failure_threshold: int = 5
+    recovery_timeout: float = 30.0
+    half_open_max_calls: int = 3
+    consecutive_successes_to_close: int = 2
+
+    def __post_init__(self) -> None:
+        if int(self.failure_threshold) < 1:
+            raise ConfigError(
+                f"resilience.circuit_breaker.failure_threshold must be >= 1, "
+                f"got: {self.failure_threshold!r}"
+            )
+        if float(self.recovery_timeout) < 0:
+            raise ConfigError(
+                f"resilience.circuit_breaker.recovery_timeout must be >= 0, "
+                f"got: {self.recovery_timeout!r}"
+            )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "failure_threshold": self.failure_threshold,
+            "recovery_timeout": self.recovery_timeout,
+            "half_open_max_calls": self.half_open_max_calls,
+            "consecutive_successes_to_close": self.consecutive_successes_to_close,
+        }
+
+
+@dataclass
+class ResilienceRetryConfig:
+    """Configuration for retry behaviour."""
+
+    max_retries: int = 3
+    min_backoff: float = 1.0
+    max_backoff: float = 60.0
+    backoff_multiplier: float = 2.0
+    jitter_factor: float = 0.1
+
+    def __post_init__(self) -> None:
+        if int(self.max_retries) < 0:
+            raise ConfigError(f"resilience.retry.max_retries must be >= 0, got: {self.max_retries!r}")
+        if float(self.min_backoff) < 0:
+            raise ConfigError(f"resilience.retry.min_backoff must be >= 0, got: {self.min_backoff!r}")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "max_retries": self.max_retries,
+            "min_backoff": self.min_backoff,
+            "max_backoff": self.max_backoff,
+            "backoff_multiplier": self.backoff_multiplier,
+            "jitter_factor": self.jitter_factor,
+        }
+
+
+@dataclass
+class ResilienceConfig:
+    """Configuration for resilience features."""
+
+    retry: ResilienceRetryConfig = field(default_factory=ResilienceRetryConfig)
+    circuit_breaker: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
+    idempotency_ttl: int = 3600
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "retry": self.retry.to_dict(),
+            "circuit_breaker": self.circuit_breaker.to_dict(),
+            "idempotency_ttl": self.idempotency_ttl,
+        }
 
 
 @dataclass
@@ -130,6 +257,12 @@ class NexusConfig:
 
     # --- System prompt ---
     system_prompt: str = "Ты — полезный ассистент. Отвечай кратко и по делу."
+
+    # --- RAG (nested dataclass) ---
+    rag: RAGConfig = field(default_factory=RAGConfig)
+
+    # --- Resilience (nested dataclass) ---
+    resilience: ResilienceConfig = field(default_factory=ResilienceConfig)
 
     # --- Web search (nested dataclass) ---
     web_search: WebSearchConfig = field(default_factory=WebSearchConfig)
@@ -226,9 +359,11 @@ class NexusConfig:
         for f in fields(self):
             val = getattr(self, f.name)
             if isinstance(val, WebSearchConfig):
-                out["web_search"] = {
-                    k: v for k, v in vars(val).items() if v != ""
-                }
+                out["web_search"] = {k: v for k, v in vars(val).items() if v != ""}
+            elif isinstance(val, RAGConfig):
+                out["rag"] = val.to_dict()
+            elif isinstance(val, ResilienceConfig):
+                out["resilience"] = val.to_dict()
             else:
                 out[f.name] = val
         return out
@@ -274,11 +409,14 @@ def _parse_section(raw: Dict[str, Any]) -> NexusConfig:
     if not isinstance(raw, dict):
         raise ConfigError(f"config root must be a mapping, got: {type(raw).__name__}")
 
-    known_scalar = {f.name: f.type for f in fields(NexusConfig) if f.name != "web_search"}
+    known_scalar = {
+        f.name: f.type for f in fields(NexusConfig)
+        if f.name not in ("web_search", "rag", "resilience")
+    }
 
     kwargs: Dict[str, Any] = {}
     for key, value in raw.items():
-        if key == "web_search":
+        if key in ("web_search", "rag", "resilience"):
             continue
         if key not in known_scalar:
             logger.debug("Ignoring unknown config key: %r", key)
@@ -294,6 +432,8 @@ def _parse_section(raw: Dict[str, Any]) -> NexusConfig:
             kwargs[key] = _coerce(value, bool)
         else:
             kwargs[key] = value
+
+    # ---- Nested sections ----
 
     # Nested web_search section
     web_raw = raw.get("web_search") or {}
@@ -322,7 +462,73 @@ def _parse_section(raw: Dict[str, Any]) -> NexusConfig:
     web_kwargs.setdefault("bing_api_key", os.getenv("BING_API_KEY", ""))
     web_kwargs.setdefault("searxng_url", os.getenv("SEARXNG_URL", ""))
 
-    return NexusConfig(web_search=WebSearchConfig(**web_kwargs), **kwargs)
+    # Nested rag section
+    rag_raw = raw.get("rag") or {}
+    rag_kwargs: Dict[str, Any] = {}
+    if isinstance(rag_raw, dict):
+        rag_fields = {f.name: f.type for f in fields(RAGConfig)}
+        for key, value in rag_raw.items():
+            if key not in rag_fields:
+                logger.debug("Ignoring unknown rag key: %r", key)
+                continue
+            target = rag_fields[key]
+            if target == "bool" or target is bool:
+                rag_kwargs[key] = _coerce(value, bool)
+            elif target == "int" or target is int:
+                rag_kwargs[key] = _coerce(value, int)
+            elif target == "str" or target is str:
+                rag_kwargs[key] = _coerce(value, str)
+            elif target == "float" or target is float:
+                rag_kwargs[key] = _coerce(value, float)
+            else:
+                rag_kwargs[key] = value
+    rag_config = RAGConfig(**rag_kwargs)
+
+    # Nested resilience section
+    resilience_raw = raw.get("resilience") or {}
+    resilience_kwargs: Dict[str, Any] = {}
+    if isinstance(resilience_raw, dict):
+        # retry sub-section
+        retry_raw = resilience_raw.get("retry") or {}
+        retry_kwargs: Dict[str, Any] = {}
+        if isinstance(retry_raw, dict):
+            for key, value in retry_raw.items():
+                if key in ("max_retries",):
+                    retry_kwargs[key] = _coerce(value, int)
+                elif key in ("min_backoff", "max_backoff", "backoff_multiplier", "jitter_factor"):
+                    retry_kwargs[key] = _coerce(value, float)
+                else:
+                    retry_kwargs[key] = value
+        retry_config = ResilienceRetryConfig(**retry_kwargs)
+
+        # circuit_breaker sub-section
+        cb_raw = resilience_raw.get("circuit_breaker") or {}
+        cb_kwargs: Dict[str, Any] = {}
+        if isinstance(cb_raw, dict):
+            for key, value in cb_raw.items():
+                if key in ("failure_threshold", "half_open_max_calls", "consecutive_successes_to_close"):
+                    cb_kwargs[key] = _coerce(value, int)
+                elif key in ("recovery_timeout",):
+                    cb_kwargs[key] = _coerce(value, float)
+                else:
+                    cb_kwargs[key] = value
+        cb_config = CircuitBreakerConfig(**cb_kwargs)
+
+        idem_ttl = _coerce(resilience_raw.get("idempotency_ttl", 3600), int)
+        resilience_config = ResilienceConfig(
+            retry=retry_config,
+            circuit_breaker=cb_config,
+            idempotency_ttl=idem_ttl,
+        )
+    else:
+        resilience_config = ResilienceConfig()
+
+    return NexusConfig(
+        web_search=WebSearchConfig(**web_kwargs),
+        rag=rag_config,
+        resilience=resilience_config,
+        **kwargs,
+    )
 
 
 def load_config(config_path: Optional[str] = None) -> NexusConfig:

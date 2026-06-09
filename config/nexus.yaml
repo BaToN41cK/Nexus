@@ -65,3 +65,43 @@ web_search:
   # tavily_api_key: "tvly-..."
   # bing_api_key: "..."
   # searxng_url: "https://searx.be"
+
+# --- RAG (Retrieval-Augmented Generation) ---
+# Enables semantic search over indexed documents.
+rag:
+  enabled: false
+  # Embedding backend: "sentence-transformers" (local), "openai", "ollama"
+  embedding_backend: "sentence-transformers"
+  embedding_model: "all-MiniLM-L6-v2"
+  # Vector store backend: "faiss" or "chroma"
+  vector_store_backend: "faiss"
+  # Persistence: where to store the index
+  index_path: "~/.nexus/rag/index.faiss"
+  # Chunking settings
+  chunk_size: 512
+  chunk_overlap: 64
+  # Retrieval settings
+  top_k_initial: 20
+  top_k_after_rerank: 5
+  use_bm25: true
+  use_mmr: true
+  use_cross_encoder: false
+
+# --- Resilience (Circuit Breaker + Retry) ---
+# Controls how Nexus handles LLM provider failures.
+resilience:
+  # Retry settings (tenacity-style exponential backoff)
+  retry:
+    max_retries: 3
+    min_backoff: 1.0        # seconds
+    max_backoff: 60.0       # seconds
+    backoff_multiplier: 2.0
+    jitter_factor: 0.1
+  # Circuit breaker settings
+  circuit_breaker:
+    failure_threshold: 5     # failures before circuit opens
+    recovery_timeout: 30.0   # seconds before half-open
+    half_open_max_calls: 3
+    consecutive_successes_to_close: 2
+  # Idempotency cache TTL (seconds)
+  idempotency_ttl: 3600
