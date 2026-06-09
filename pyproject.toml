@@ -87,11 +87,22 @@ all = [
     "anthropic",
     "ollama",
     "mcp",
+    "sentence-transformers",
+    "faiss-cpu",
+    "chromadb",
 ]
 openai = ["openai"]
 anthropic = ["anthropic"]
 ollama = ["ollama"]
 mcp = ["mcp"]
+rag = [
+    "sentence-transformers>=2.2,<4.0",
+    "faiss-cpu>=1.7,<2.0",
+]
+chroma = [
+    "chromadb>=0.4,<1.0",
+]
+openai-embeddings = ["openai"]
 interactive = ["prompt-toolkit"]
 
 [project.urls]
