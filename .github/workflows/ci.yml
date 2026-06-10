@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
@@ -13,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         os: [ubuntu-latest, windows-latest]
 
     steps:
@@ -30,7 +34,7 @@ jobs:
           pip install pytest pytest-cov
       - name: Run tests with coverage
         run: |
-          python -m pytest tests/ -q --cov=nexus --cov-report=term-missing --cov-fail-under=60
+          python -m pytest tests/ -q --cov=nexus --cov-report=term-missing --cov-fail-under=65
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
         uses: codecov/codecov-action@v4
@@ -39,19 +43,35 @@ jobs:
           fail_ci_if_error: false
 
   lint:
-    name: Lint (ruff + black)
+    name: Lint (ruff check + format)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install linters
-        run: pip install ruff black
-      - name: Run ruff
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff check
         run: ruff check nexus/ tests/
-      - name: Check black formatting
-        run: black --check --line-length=100 nexus/ tests/
+      - name: Check ruff format
+        run: ruff format --check nexus/ tests/
+
+  typecheck:
+    name: Type check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -e ".[all]"
+          pip install mypy
+      - name: Run mypy
+        run: mypy nexus/
+        continue-on-error: true
 
   security:
     name: Security audit (pip-audit)

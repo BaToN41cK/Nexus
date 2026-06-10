@@ -5,6 +5,7 @@ Nexus CLI - Command Line Interface
 import argparse
 import logging
 import os
+import signal
 import shutil
 import sys
 
@@ -1324,7 +1325,18 @@ def _extract_banner_from_argv(argv):
     return None
 
 
+def _signal_handler(signum: int, frame) -> None:
+    """Handle Ctrl+C / SIGINT with a clean message and exit."""
+    console.print(f"\n[yellow]{t('cmd.interactive_interrupted')}[/yellow]")
+    sys.exit(130 if signum == signal.SIGINT else 0)
+
+
 def main() -> None:
+    # Register a top-level signal handler for graceful Ctrl+C.
+    # Individual commands (interactive, streaming) may override this
+    # with their own try/except KeyboardInterrupt blocks.
+    signal.signal(signal.SIGINT, _signal_handler)
+
     # Apply the language BEFORE building the parser so that --help and the
     # description are already localised.  We peek at ``--lang`` directly
     # in ``sys.argv`` because the parser doesn't exist yet at this point.
