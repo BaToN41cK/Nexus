@@ -1,0 +1,11 @@
+# Global owner — all changes need review from at least one maintainer
+* @BaToN41cK
+
+# Release workflows need careful review
+.github/workflows/ @BaToN41cK
+
+# Core agent logic
+nexus/core/ @BaToN41cK
+
+# CLI
+nexus/cli.py @BaToN41cK

@@ -1,4 +1,6 @@
-"""Nexus — ИИ-ассистент с загрузкой контента из URL и web-поиском."""
+"""Nexus — AI assistant with multi-provider LLM support, web search, content loading, and ReAct agent."""
 
-__version__ = "1.0.0"
-__author__ = "Nexus Team"
+from nexus.__version__ import __version__  # noqa: F401
+
+__author__ = "Sergey Gerasimenko"
+__license__ = "MIT"
