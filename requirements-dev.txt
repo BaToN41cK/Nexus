@@ -1,0 +1,32 @@
+# =============================================================
+# Nexus — Dev dependencies
+# Install:  pip install -r requirements-dev.txt
+#
+# These are in ADDITION to the main requirements.txt.
+# For a full editable install with all extras:
+#   pip install -e ".[all]" && pip install -r requirements-dev.txt
+# =============================================================
+
+# --- Testing ---
+pytest>=8.0
+pytest-cov>=5.0
+pytest-mock>=3.12
+
+# --- Linting & Formatting ---
+ruff>=0.9
+
+# --- Type Checking ---
+mypy>=1.8
+types-PyYAML
+types-requests
+types-beautifulsoup4
+
+# --- Pre-commit ---
+pre-commit>=3.6
+
+# --- Security ---
+pip-audit>=2.7
+
+# --- Build & Publish ---
+build>=1.0
+twine>=5.0

@@ -1,63 +1,36 @@
-# История изменений
+# Changelog
 
-> 🔙 Назад → [README.md](README.md)
+All notable changes to this project will be documented in this file.
 
-Формат: [Keep a Changelog](https://keepachangelog.com/)
+The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
----
+## [1.0.0] — 2026-06-11
 
-## [Unreleased]
+### 🎉 Initial stable release
 
-### Added
-- MCP-сервер (`nexus mcp`) для интеграции с Claude Desktop, Cursor, Continue
-- ReAct-агент (`nexus.core.agent_react`) — многошаговое рассуждение с инструментами
-- Подключаемая память (`nexus.core.memory`) — JSON и SQLite бэкенды
-- Интернационализация (i18n) — интерфейс на русском и английском языках
-- SQLite-хранилище с полнотекстовым поиском (FTS5)
-- Фабрика `create_memory_store()` для создания хранилищ по имени
-- Фабрика `create_provider()` для создания LLM-провайдеров
-- Web-поиск: DuckDuckGo, Tavily, SearXNG, Bing
-- Загрузка контента: YouTube, PDF, DOCX, PPTX, Excel
-- Кэширование ответов с TTL и автоочисткой
-- Кэширование результатов web-поиска
-- Docker-образ для запуска в контейнере
-- Pre-commit хуки для автоматической проверки кода
-- Тесты для всех основных модулей
-- **Инструменты DX:** `Makefile` с 11 целями (`make help/test/lint/format/typecheck/cov/build/...`)
-- **CI:** workflows для `mypy` (`.github/workflows/mypy.yml`) и автообновлений `Dependabot` (`.github/dependabot.yml`)
-- **Quality config:** секции `[tool.ruff]` (linter + formatter) и `[tool.mypy]` (type-checker) в `pyproject.toml`
-- **Документация:** [`docs/TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — 10 самых частых ошибок и их решения
-- **CLI:** флаг `--version` (`nexus --version` без подкоманды)
-- **Тесты:** маркер `slow` и опция `-ra` (показ всех причин skip/xfail) в pytest
+#### Core Features
+- **Multi-provider LLM support** — Groq, OpenAI, Anthropic, Ollama with automatic fallback
+- **Web search** — DuckDuckGo (free), Tavily, Bing, SearXNG backends
+- **Content loading** — YouTube transcripts, PDF, DOCX, PPTX, Excel, web pages
+- **ReAct agent** — multi-step reasoning with tool calling
+- **MCP server** — integration with Claude Desktop, Cursor, Continue
+- **RAG (Retrieval-Augmented Generation)** — FAISS + BM25 hybrid search, ChromaDB support
+- **Plugin system** — custom providers, backends, commands, hooks
+- **Interactive CLI** — real-time streaming, prompt autocomplete
+- **i18n** — 5+ languages (ru, en, de, fr, es), extensible
+- **Usage statistics** — token tracking, cost estimation, per-provider breakdown
 
-### Changed
-- Рефакторинг провайдеров: единый интерфейс `BaseProvider`
-- Рефакторинг web-поиска: фасад `WebSearcher` с авто-выбором бэкенда
-- Улучшена обработка ошибок во всех модулях
-- Обновлена документация
-- **`nexus/commands/run.py`:** константы путей (`NEXUS_DIR`, `CACHE_DIR`, и т.д.) теперь импортируются из `nexus.core.paths` вместо дубля
-- **`nexus/core/security.py`:** функция `mask_api_key` приведена к PEP8 (убраны лишние пробелы)
+#### Resilience
+- **Circuit Breaker** — automatic failure detection (CLOSED → OPEN → HALF_OPEN)
+- **Pre-emptive Health Checker** — background thread pings OPEN providers, auto-recovery
+- **Emergency Fallback** — Ollama tiny model → rules-based patterns → offline message
+- **Retry with exponential backoff** — jitter, configurable limits
+- **Idempotency** — deduplication of identical requests
 
-### Fixed
-- Исправлена работа стриминга с Groq API
-- Исправлена работа с повреждёнными JSON-файлами истории
-- Исправлена работа с YouTube-видео без субтитров
-- **`README.md`:** исправлена опечатка в примере конфига OpenAI (`groq_model` → `openai_model`)
-- **`nexus/cli.py`:** `SensitiveDataFilter` теперь устанавливается **после** `_setup_logging()`, а не до (мог теряться при `basicConfig`)
-- **`nexus/commands/run.py`:** убран побочный эффект `os.makedirs(...)` на уровне модуля (заменён на вызов `ensure_dirs()` из `paths.py`)
-
----
-
-## [1.0.0] - 2024-XX-XX
-
-### Added
-- Базовый CLI с командами `run`, `interactive`, `search`, `history`, `status`, `cache-clear`
-- LLM-провайдеры: Groq, OpenAI, Anthropic, Ollama
-- Web-поиск: DuckDuckGo, Tavily, SearXNG, Bing
-- Загрузка контента: веб-страницы, YouTube, PDF, DOCX, PPTX, Excel
-- Кэширование ответов
-- История запросов
-- Контекст диалога
-- Rich UI: Markdown, подсветка кода, прогресс-бары
-- Конфигурация через YAML
-- Автоматический поиск .env файла
+#### DevOps & Packaging
+- **PyPI publishing** — automated via GitHub Actions (trusted publishing)
+- **CI/CD** — Python 3.10–3.13, ruff lint/format, mypy, pip-audit security scan
+- **Pre-commit hooks** — ruff, mypy, trailing whitespace, detect private keys
+- **Makefile** — `make test`, `make lint`, `make release`, `make install-dev`
+- **requirements.txt** — one-command full install of all dependencies
+- **Docker support** — multi-stage build, Alpine runtime image
