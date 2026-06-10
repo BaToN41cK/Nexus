@@ -14,6 +14,7 @@ Resilience features:
   - Idempotency keys (prevents duplicate requests)
   - Fallback provider chain (auto-failover to backup provider on errors)
   - DEFAULT_FALLBACK_CHAIN — built-in multi-provider fallback list
+  - Emergency fallback (Ollama tiny model / rules-based) when all providers down
 """
 
 import logging
@@ -38,6 +39,7 @@ from nexus.core.resilience import (
     RetryConfig,
     resilient_call,
 )
+from nexus.core.tiny_fallback import emergency_fallback
 from nexus.core.web_search import WebSearchConfig, WebSearcher
 
 logger = logging.getLogger(__name__)
@@ -168,6 +170,11 @@ class NexusAgent:
     Supports automatic multi-provider fallback — if the primary provider
     is unavailable, Nexus will automatically try the next available provider
     in the chain (Groq → OpenAI → Anthropic → Ollama by default).
+
+    If *all* providers fail, Nexus uses an **emergency fallback**:
+      1. Try Ollama with a tiny local model (``tinyllama``)
+      2. Match the query against rules-based patterns
+      3. Return a generic offline message
 
     Usage::
 
@@ -327,6 +334,9 @@ class NexusAgent:
 
             Groq → OpenAI → Anthropic → Ollama
 
+        If **all** providers fail, Nexus uses the emergency fallback:
+        local Ollama tiny model → rules-based patterns → generic offline message.
+
         Args:
             prompt: The user prompt.
             system_prompt: Optional system-level instruction.
@@ -367,11 +377,10 @@ class NexusAgent:
                     )
                     return fallback_result
             except ProviderNotAvailableError:
-                logger.error("All providers in fallback chain failed")
-                return {
-                    "text": "[Ошибка: все провайдеры недоступны. Проверьте подключение к интернету и API-ключи.]",
-                    "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-                }
+                logger.warning(
+                    "All primary & fallback providers failed — using emergency fallback",
+                )
+                return emergency_fallback(messages)
 
         return result
 
@@ -390,6 +399,7 @@ class NexusAgent:
           - Circuit breaker stops hammering a failing provider.
           - Exponential backoff with jitter for transient errors.
           - Automatic fallback to next provider if all retries fail.
+          - Emergency fallback (Ollama tiny model / rules-based) as last resort.
 
         Args:
             prompt: The user prompt.
@@ -462,24 +472,13 @@ class NexusAgent:
 
         except ConnectionError as exc:
             logger.error("Circuit breaker blocked request: %s", exc)
-            return {
-                "text": "[Сервис временно недоступен. Circuit breaker OPEN. "
-                        "Попробуйте позже или переключите провайдера.]",
-                "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-            }
+            return emergency_fallback(messages)
         except ProviderNotAvailableError as exc:
             logger.error("All providers failed: %s", exc)
-            return {
-                "text": "[Ошибка: все провайдеры недоступны. "
-                        "Проверьте подключение к интернету и API-ключи.]",
-                "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-            }
+            return emergency_fallback(messages)
         except Exception as exc:
-            logger.exception("All resilience layers exhausted")
-            return {
-                "text": f"[Ошибка после всех попыток: {exc}]",
-                "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0,
-            }
+            logger.exception("All resilience layers exhausted, using emergency fallback")
+            return emergency_fallback(messages)
 
     # ------------------------------------------------------------------
     # Streaming generation
@@ -496,6 +495,9 @@ class NexusAgent:
 
         If the primary provider fails during streaming, falls back to
         non-streaming from the next available provider.
+
+        If **all** providers fail, the emergency fallback result is yielded
+        as a single token.
 
         Args:
             prompt: The user prompt.
@@ -541,9 +543,14 @@ class NexusAgent:
                         "fallback_provider": target.provider_name,
                     }
             except ProviderNotAvailableError:
-                logger.error("All providers in fallback chain failed")
-                yield "[Ошибка: все провайдеры недоступны.]"
-                return {"text": "", "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                logger.warning(
+                    "All providers failed during stream — using emergency fallback",
+                )
+                fallback = emergency_fallback(messages)
+                text = fallback.get("text", "")
+                if text:
+                    yield text
+                    return fallback
 
         if first_token is not None:
             yield first_token

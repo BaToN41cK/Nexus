@@ -28,7 +28,21 @@ Nexus построен по принципу **многослойной архи
 │              run.py — основная логика               │
 ├─────────────────────────────────────────────────────┤
 │                Ядро (core/)                         │
-│  agent.py │ agent_react.py │ config.py │ memory.py  │
+│  agent.py │ agent_react.py │ resilience.py          │
+│  health.py │ tiny_fallback.py │ config.py           │
+│  memory.py │ providers.py                           │
+├─────────────────────────────────────────────────────┤
+│     Resilience Layer (resilience.py)                │
+│  CircuitBreaker | FallbackProviderChain             │
+│  IdempotencyManager | retry_call                   │
+├─────────────────────────────────────────────────────┤
+│     Health Checker (health.py)                      │
+│  HealthChecker — background daemon thread           │
+│  Pings OPEN providers => auto-closes circuit breaker│
+├─────────────────────────────────────────────────────┤
+│     Emergency Fallback (tiny_fallback.py)            │
+│  TinyFallbackResponder (rules-based patterns)       │
+│  try_ollama_tiny_fallback() | emergency_fallback()  │
 ├─────────────────────────────────────────────────────┤
 │             Провайдеры (providers.py)               │
 │    GroqProvider │ OpenAIProvider │ AnthropicProvider│
@@ -67,12 +81,23 @@ Nexus построен по принципу **многослойной архи
                           │  (agent.py)  │
                           └──────┬───────┘
                                  │
-                ┌────────────────┼────────────────┐
-                │                │                │
-         ┌──────▼──────┐ ┌──────▼──────┐ ┌───────▼──────┐
-         │  Providers  │ │ web_search  │ │   memory     │
-         │ (groq,etc.) │ │  (DDG,etc.) │ │ (json,sqlite)│
-         └─────────────┘ └─────────────┘ └──────────────┘
+          ┌──────────────────────┼──────────────────────┐
+          │                      │                      │
+   ┌──────▼───────┐     ┌───────▼──────┐     ┌────────▼───────┐
+   │  Resilience   │     │  Providers   │     │  Emergency     │
+   │ (resilience.py)│    │ (groq,etc.)  │     │  Fallback      │
+   │ CircuitBr.   │     │              │     │ (tiny_fallback)│
+   │ FallbackChain│     │              │     │ Rules | Ollama │
+   │ Idempotency  │     │              │     │ tiny model     │
+   └──────┬───────┘     └──────┬───────┘     └────────┬───────┘
+          │                    │                      │
+          └──────┬─────────────┼──────────────────────┘
+                 │             │
+          ┌──────▼──────┐ ┌────▼─────────┐
+          │  Health     │ │ web_search   │
+          │  Checker    │ │ memory       │
+          │ (health.py) │ │ content_load │
+          └─────────────┘ └──────────────┘
 ```
 
 ---
@@ -90,6 +115,12 @@ Nexus построен по принципу **многослойной архи
 6. run.py: проверка кэша
 7. history.py: построение контекста из истории
 8. agent.py: отправка запроса в LLM
+   a. Primary provider (Groq/OpenAI/etc.)
+   b. Если ошибка -> FallbackProviderChain (следующий провайдер)
+   c. Если все провайдеры упали -> Emergency Fallback
+      1. Ollama tinyllama (локально)
+      2. Rules-based (TinyFallbackResponder)
+      3. Generic offline message
 9. rich: стриминг и рендеринг ответа
 10. run.py: сохранение в кэш и историю
 ```
@@ -99,7 +130,7 @@ Nexus построен по принципу **многослойной архи
 ```
 1. cli.py: парсинг аргументов
 2. run.py: загрузка конфигурации
-3. web_search.py: выбор бэкенда (auto → tavily/bing/searxng/ddg)
+3. web_search.py: выбор бэкенда (auto -> tavily/bing/searxng/ddg)
 4. web_search.py: поиск запроса
 5. web_search.py: загрузка top-N страниц (content_loader)
 6. agent.py: формирование augmented prompt с контекстом
@@ -113,11 +144,11 @@ Nexus построен по принципу **многослойной архи
 1. ReActAgent: построение системного промпта
 2. Цикл (max_iterations):
    a. NexusAgent.generate_response(transcript)
-   b. parse_react_step(text) → ReactStep
-   c. Если Final Answer → выход из цикла
-   d. Если Action → ToolRegistry.call(name, input)
+   b. parse_react_step(text) -> ReactStep
+   c. Если Final Answer -> выход из цикла
+   d. Если Action -> ToolRegistry.call(name, input)
    e. Добавление Observation в transcript
-   f. Если нет действия → nudge (напоминание)
+   f. Если нет действия -> nudge (напоминание)
 3. Фолбек: запрос Final Answer если не получен
 4. Возврат ReactResult
 ```
@@ -139,6 +170,33 @@ Nexus построен по принципу **многослойной архи
 - Поддержка streaming и non-streaming режимов
 - Метод `search_and_answer_stream()` для web-поиска
 - Автоматическая суммаризация длинного контента
+- Интеграция с `FallbackProviderChain` для multi-provider failover
+- Использование `emergency_fallback()` как последней надежды
+
+### `nexus/core/resilience.py` — Resilience-слой
+
+- `CircuitBreaker` — state machine (CLOSED -> OPEN -> HALF_OPEN)
+- `FallbackProviderChain` — ordered multi-provider fallback
+- `IdempotencyManager` — deduplication of identical requests
+- `retry_call()` — exponential backoff with jitter
+- `resilient_call()` — unified wrapper (retry + circuit breaker + idempotency)
+
+### `nexus/core/health.py` — Pre-emptive Health Checker
+
+- `HealthChecker` — background daemon thread
+- Periodically pings providers whose circuit breaker is OPEN
+- On successful ping -> immediately closes the circuit breaker
+- Bypasses `recovery_timeout` + HALF_OPEN -> CLOSED dance
+- Integrates with `FallbackProviderChain` via `health_checker` parameter
+
+### `nexus/core/tiny_fallback.py` — Emergency Fallback
+
+- `emergency_fallback()` — 3-tier graceful degradation:
+  1. Ollama tiny model (`tinyllama`) — local, no internet needed
+  2. `TinyFallbackResponder` — rules-based pattern matching (ru/en)
+  3. Generic offline diagnostic message
+- `ResponseRule` — configurable pattern -> response with priority
+- Used by `NexusAgent` when all providers in the chain fail
 
 ### `nexus/core/providers.py` — Провайдеры
 
@@ -230,6 +288,28 @@ for token in gen:
     live.update(Panel(Markdown(token)))
 ```
 
+### Circuit Breaker Pattern (Resilience)
+
+```python
+# CircuitBreaker prevents cascading failures
+cb = CircuitBreaker(config)
+if cb.allow_request():
+    try:
+        result = call_provider()
+        cb.record_success()
+    except Exception:
+        cb.record_failure()  # OPEN after failure_threshold
+```
+
+### Background Health Checker Pattern
+
+```python
+# HealthChecker auto-recovers OPEN circuits
+checker = HealthChecker(interval=15.0)
+checker.register("groq:model", ping_fn, circuit_breaker)
+checker.start()  # daemon thread, auto-recovery on ping success
+```
+
 ---
 
 ## Расширяемость
@@ -293,3 +373,33 @@ def my_tool(value):
     return "result"
 
 tools.register("my_tool", my_tool, "Description for LLM.")
+```
+
+### Добавление новых health-check ping-функций
+
+```python
+# Кастомная ping-функция для HealthChecker
+def my_ping() -> bool:
+    try:
+        # Лёгкий запрос к провайдеру
+        return True
+    except Exception:
+        return False
+
+checker = HealthChecker()
+checker.register("my_provider:model", my_ping, circuit_breaker)
+checker.start()
+```
+
+### Добавление новых правил для TinyFallbackResponder
+
+```python
+from nexus.core.tiny_fallback import ResponseRule, TinyFallbackResponder
+
+my_rule = ResponseRule(
+    patterns=[r"(?i)my custom pattern"],
+    response="My custom response",
+    priority=50,
+)
+responder = TinyFallbackResponder(rules=[my_rule])
+result = responder.respond(messages)

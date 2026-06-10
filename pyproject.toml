@@ -90,6 +90,7 @@ all = [
     "sentence-transformers",
     "faiss-cpu",
     "chromadb",
+    "prompt-toolkit",
 ]
 openai = ["openai"]
 anthropic = ["anthropic"]

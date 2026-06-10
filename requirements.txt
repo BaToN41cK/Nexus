@@ -1,5 +1,15 @@
-groq
-requests
+# ======================================================================
+# Nexus — полная установка одной командой
+#
+#   pip install -r requirements.txt
+#
+# Эта команда устанавливает ВСЕ зависимости (core + optional):
+#   groq, openai, anthropic, ollama, MCP, RAG, Chroma, interactive UI
+# ======================================================================
+
+# --- Core (всегда нужны) ---
+groq>=0.11
+requests>=2.28
 beautifulsoup4
 python-dotenv
 pyyaml
@@ -10,27 +20,28 @@ pypdf
 python-docx
 python-pptx
 openpyxl
-# Optional providers (uncomment as needed):
-# openai
-# anthropic
-# ollama
-# Web-search is built-in (DuckDuckGo fallback works without any extra deps).
-# To enable a paid search backend, uncomment the matching SDK:
+
+# --- LLM-провайдеры (опционально — раскомментируй нужные, или оставь всё) ---
+openai
+anthropic
+ollama
+
+# --- MCP сервер (для IDE-интеграции) ---
+mcp
+
+# --- RAG (Retrieval-Augmented Generation) ---
+sentence-transformers>=2.2,<4.0
+faiss-cpu>=1.7,<2.0
+
+# --- ChromaDB (альтернатива FAISS) ---
+chromadb>=0.4,<1.0
+
+# --- Интерактивный UI (prompt_toolkit) ---
+prompt-toolkit
+
+# --- Поисковые бэкенды ---
+# Tavily (требует TAVILY_API_KEY)
 # tavily-python
-# bing (uses REST; no SDK required)
-# searxng (uses REST; no SDK required)
-
-# MCP server (optional — only needed for `nexus mcp` / IDE integration)
-# mcp
-
-# RAG (Retrieval-Augmented Generation) — hybrid search, BM25, MMR, embeddings
-# Uncomment the sections you need:
-# Basic RAG with local embeddings and FAISS vector store:
-# sentence-transformers
-# faiss-cpu
-# ChromaDB vector store (alternative to FAISS):
-# chromadb
-# OpenAI embeddings (alternative to sentence-transformers):
-# openai
-# Ollama embeddings (alternative to sentence-transformers):
-# ollama
+# Bing Search API (требует BING_API_KEY)
+# DuckDuckGo — встроен, никаких доп. зависимостей не нужно
+# SearXNG — REST API, никаких доп. зависимостей не нужно

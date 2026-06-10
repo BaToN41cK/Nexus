@@ -374,6 +374,10 @@ class FallbackProviderChain:
 
     Attempts each provider in order, falling back to the next on failure.
     Optionally uses a circuit breaker for each target.
+
+    When a *health_checker* is provided, all circuit breakers are automatically
+    registered for pre-emptive health checks (the health checker periodically
+    pings OPEN providers and closes the circuit when they recover).
     """
 
     def __init__(
@@ -381,25 +385,67 @@ class FallbackProviderChain:
         targets: List[FallbackTarget],
         use_circuit_breaker: bool = True,
         idempotency_manager: Optional[IdempotencyManager] = None,
+        health_checker: Optional[Any] = None,
     ):
         """
         Args:
             targets: Ordered list of fallback targets.
             use_circuit_breaker: Whether to use circuit breakers per target.
             idempotency_manager: Optional idempotency manager.
+            health_checker: Optional :class:`HealthChecker` instance for
+                pre-emptive circuit breaker recovery.
         """
         self.targets = targets
         self.use_circuit_breaker = use_circuit_breaker
         self.idempotency_manager = idempotency_manager or IdempotencyManager()
         self._circuit_breakers: Dict[str, CircuitBreaker] = {}
         self._lock = threading.Lock()
+        self._health_checker = health_checker
 
     def _get_circuit_breaker(self, target: FallbackTarget) -> CircuitBreaker:
         key = f"{target.provider_name}:{target.model}"
         with self._lock:
             if key not in self._circuit_breakers:
-                self._circuit_breakers[key] = CircuitBreaker()
+                cb = CircuitBreaker()
+                self._circuit_breakers[key] = cb
+                # Register with health checker if available.
+                if self._health_checker is not None and self.use_circuit_breaker:
+                    self._health_checker.register(key, self._build_ping_fn(target), cb)
             return self._circuit_breakers[key]
+
+    @staticmethod
+    def _build_ping_fn(target: FallbackTarget) -> Callable[[], bool]:
+        """
+        Build a lightweight health-check ping function for a target.
+
+        This sends an empty messages list to the provider's API and checks
+        whether the call raises an exception.  Subclasses may override to
+        provide a cheaper probe (e.g. a dedicated /health endpoint).
+        """
+        def ping() -> bool:
+            try:
+                # Import here to avoid circular dependency.
+                from nexus.core.providers import create_provider, ProviderConfig
+                config = ProviderConfig(
+                    name=target.provider_name,
+                    api_key=target.api_key,
+                    model=target.model,
+                    base_url=target.base_url,
+                    timeout=min(target.timeout, 10),  # short timeout for health checks
+                    max_tokens=1,
+                    temperature=0.0,
+                )
+                provider = create_provider(config)
+                # Send a minimal ping — empty messages list.
+                result = provider.generate([])
+                # Check result doesn't contain an error pattern.
+                text = result.get("text", "")
+                if not text or text.startswith("["):
+                    return False
+                return True
+            except Exception:
+                return False
+        return ping
 
     def call(
         self,

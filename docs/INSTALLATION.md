@@ -40,13 +40,21 @@
 
 ## Установка через pip
 
+### Полная установка одной командой (все зависимости)
+
+```bash
+pip install -r requirements.txt
+```
+
+> ℹ️ Эта команда устанавливает **все** зависимости: core (groq, requests, beautifulsoup4, rich, youtube-transcript-api, pypdf, python-docx, python-pptx, openpyxl) + опциональные провайдеры (openai, anthropic, ollama) + MCP-сервер + RAG (sentence-transformers, faiss-cpu) + ChromaDB + интерактивный UI (prompt_toolkit).
+
 ### Базовая установка (Groq)
 
 ```bash
 pip install nexus
 ```
 
-> ℹ️ `pip` сам установит все зависимости (groq, requests, beautifulsoup4, rich, youtube-transcript-api, pypdf, python-docx, python-pptx, openpyxl) и создаст исполняемый файл `nexus` в `PATH`.
+> ℹ️ Устанавливает только базовые зависимости (groq, requests, beautifulsoup4, rich, youtube-transcript-api, pypdf, python-docx, python-pptx, openpyxl) и создаёт исполняемый файл `nexus` в `PATH`.
 
 ### С дополнительными провайдерами
 
