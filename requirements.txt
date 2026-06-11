@@ -8,8 +8,8 @@
 # ======================================================================
 
 # --- Core (всегда нужны) ---
-groq>=0.11
-requests>=2.28
+groq>=1.0.0
+requests>=2.32.5
 beautifulsoup4
 python-dotenv
 pyyaml
@@ -30,11 +30,11 @@ ollama
 mcp
 
 # --- RAG (Retrieval-Augmented Generation) ---
-sentence-transformers>=2.2,<4.0
-faiss-cpu>=1.7,<2.0
+sentence-transformers>=5.1.2,<6.0
+faiss-cpu>=1.13.0,<2.0
 
 # --- ChromaDB (альтернатива FAISS) ---
-chromadb>=0.4,<1.0
+chromadb>=1.5.9,<2.0
 
 # --- Интерактивный UI (prompt_toolkit) ---
 prompt-toolkit
